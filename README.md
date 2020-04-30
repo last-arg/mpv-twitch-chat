@@ -4,8 +4,18 @@ Have to use API version v5(kraken).
 There is newer Twitch API but that doesn't support getting chat history/comments.
 
 
+Development:
+echo src/main.zig | entr -c -r zig build run
+
+
 Run MPV with socket file
-mpv --input-ipc-server=/tmp/mpv-socket-test https://www.youtube.com/watch?v=Lo3rrP8u7Mw
+mpv --input-ipc-server=/tmp/mpv-twitch https://www.youtube.com/watch?v=Lo3rrP8u7Mw
+mpv --playlist=/home/ck/sources/music/songs.txt --input-ipc-server=/tmp/mpv-twitch --ytdl-format=worstvideo+bestaudio/best --loop-playlist --shuffle
+
+Links:
+HTTP\1.1 Message Syntax and Routing - https://greenbytes.de/tech/webdav/rfc7230.html#message.body.length
+HTTP header parsing - https://github.com/Vexu/routez/blob/master/src/routez/http/parser.zig
+OpenSSL server/client example - https://aticleworld.com/ssl-server-client-using-openssl-in-c/
 
 
 Zig:
