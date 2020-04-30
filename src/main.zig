@@ -1,7 +1,6 @@
-// Build
-// zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto --release-small
 const std = @import("std");
 const warn = std.debug.warn;
+const assert = std.debug.assert;
 const net = std.net;
 const Address = std.net.Address;
 const http = std.http;
@@ -16,7 +15,7 @@ const ArrayList = std.ArrayList;
 const ascii = std.ascii;
 const c = @import("c.zig");
 
-// TODO: Function 'makeTwitchCommentsRequest' will throw 'error: SSLConnection'
+// TODO: Function 'Twitch.requestCommentsJson' will throw 'error: SSLConnection'
 // pub const io_mode = .evented;
 
 const Context = struct {
@@ -30,6 +29,7 @@ const Comments = struct {
     comments: []const Comment,
     allocator: *Allocator,
     next_index: usize = 0,
+    // TODO?: Make these bools into enum instead?
     is_last: bool = false,
     is_first: bool = false,
 
@@ -101,7 +101,6 @@ const Comments = struct {
 
     pub fn printComments(self: Self, start_index: usize, end_index: usize) !void {
         var i = start_index;
-        // TODO: Decide if end_index is exclusive or inclusive.
         while (i < end_index) : (i += 1) {
             const offset = self.offsets[i] + g_offset_correction;
             const comment = self.comments[i];
@@ -167,7 +166,12 @@ pub fn main() anyerror!void {
 
     // warn("==> {}\n", .{url[start_index..end_index]});
     warn("==> Download comments\n", .{});
-    const comments_json = try twitch.requestCommentsJson(mpv.video_time);
+    var corrected_time = blk: {
+        const time = mpv.video_time - g_offset_correction;
+        if (time < 0) break :blk 0.0;
+        break :blk time;
+    };
+    const comments_json = try twitch.requestCommentsJson(corrected_time);
     defer twitch.allocator.free(comments_json);
     // const comments_json = @embedFile("../test/skadoodle-chat.json");
     var comments = try Comments.initTwitchJson(allocator, comments_json);
@@ -178,11 +182,16 @@ pub fn main() anyerror!void {
         try mpv.readResponses();
 
         // warn("pos: {d}\n", .{mpv.video_time});
+        corrected_time = blk: {
+            const time = mpv.video_time - g_offset_correction;
+            if (time < 0) break :blk 0.0;
+            break :blk time;
+        };
 
         const new_index = blk: {
             for (comments.offsets[comments.next_index..]) |offset, i| {
                 // warn("{d} > {d}\n", .{ mpv.video_time, offset });
-                if (mpv.video_time > offset) {
+                if (corrected_time > offset) {
                     continue;
                 }
                 break :blk i + comments.next_index;
@@ -198,14 +207,14 @@ pub fn main() anyerror!void {
 
         const first_offset = comments.offsets[0];
         const last_offset = comments.offsets[comments.offsets.len - 1];
-        if ((!comments.is_first and mpv.video_time < first_offset) or
-            (!comments.is_last and mpv.video_time > last_offset))
+        if ((!comments.is_first and corrected_time < first_offset) or
+            (!comments.is_last and corrected_time > last_offset))
         {
             warn("==> Download new comments\n", .{});
             const old_end = comments.offsets[comments.offsets.len - 1];
 
             comments.deinit();
-            const new_json = try twitch.requestCommentsJson(mpv.video_time);
+            const new_json = try twitch.requestCommentsJson(corrected_time);
             comments = try Comments.initTwitchJson(allocator, new_json);
 
             const new_start = comments.offsets[0];
@@ -221,7 +230,7 @@ pub fn main() anyerror!void {
                 }
             } else {
                 for (comments.offsets) |offset, i| {
-                    if (mpv.video_time > offset) {
+                    if (corrected_time > offset) {
                         continue;
                     }
                     comments.next_index = i;
@@ -232,7 +241,7 @@ pub fn main() anyerror!void {
             continue;
         }
 
-        std.time.sleep(std.time.ns_per_s * 0.5);
+        std.time.sleep(std.time.second * 0.5);
     }
 }
 
@@ -245,7 +254,6 @@ const Twitch = struct {
     video_id: []const u8,
 
     pub fn init(allocator: *Allocator, video_id: []const u8) !Self {
-        const fd = (try net.tcpConnectToHost(allocator, domain, port)).handle;
         return Self{
             .allocator = allocator,
             .video_id = video_id,
@@ -253,6 +261,7 @@ const Twitch = struct {
     }
 
     pub fn requestCommentsJson(self: Self, video_offset: f64) ![]const u8 {
+        assert(video_offset >= 0.0);
         const location = try std.fmt.allocPrint(self.allocator, "/v5/videos/{}/comments?content_offset_seconds={d:.2}", .{ self.video_id, video_offset });
         defer self.allocator.free(location);
         const request_line = try std.fmt.allocPrint(self.allocator, "GET {} HTTP/1.1", .{location});
@@ -292,10 +301,10 @@ const Twitch = struct {
         const ssl = c.SSL_new(ctx) orelse return error.SSLNew;
         defer c.SSL_free(ssl);
 
-        const fd = (try net.tcpConnectToHost(self.allocator, domain, port)).handle;
-        defer os.close(fd);
+        const host_socket = try net.tcpConnectToHost(self.allocator, domain, port);
+        defer host_socket.close();
 
-        const set_fd = c.SSL_set_fd(ssl, fd);
+        const set_fd = c.SSL_set_fd(ssl, host_socket.handle);
         if (set_fd == 0) {
             return error.SetSSLFileDescriptor;
         }
@@ -564,7 +573,7 @@ const Mpv = struct {
                 const data = root.Object.get("data").?.value;
                 switch (@intToEnum(Property, @intCast(u1, property_id.value.Integer))) {
                     .PlaybackTime => {
-                        self.video_time = data.Float - g_offset_correction;
+                        self.video_time = data.Float;
                     },
                     .Path => {
                         self.allocator.free(self.video_path);

@@ -8,6 +8,9 @@ Development:
 echo src/main.zig | entr -c -r zig build run
 
 
+Build:
+zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto --release-small
+
 
 Run MPV with socket file
 mpv --input-ipc-server=/tmp/mpv-twitch https://www.youtube.com/watch?v=Lo3rrP8u7Mw
