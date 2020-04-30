@@ -1,3 +1,5 @@
+// Build
+// zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto --release-small
 const std = @import("std");
 const warn = std.debug.warn;
 const net = std.net;
@@ -136,11 +138,12 @@ pub fn main() anyerror!void {
     const allocator = std.heap.page_allocator;
 
     warn("==> Connect to MPV socket\n", .{});
-    var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch");
+    var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
     defer mpv.deinit();
 
     // Get twitch video ID.
-    const url = "https://www.twitch.tv/videos/604738742?t=8h47m8s";
+    // const url = "https://www.twitch.tv/videos/604738742?t=8h47m8s";
+    const url = mpv.video_path;
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1; // NOTE: need the pos after '/'.
     const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
 
@@ -148,6 +151,7 @@ pub fn main() anyerror!void {
     // defer twitch.deinit();
     // warn("{}\n", .{twitch});
 
+    // warn("==> {}\n", .{url[start_index..end_index]});
     warn("==> Download comments\n", .{});
     const comments_json = try twitch.requestCommentsJson(mpv.video_time);
     defer twitch.allocator.free(comments_json);
