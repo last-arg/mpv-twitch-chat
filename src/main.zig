@@ -103,7 +103,7 @@ const Comments = struct {
         var i = start_index;
         // TODO: Decide if end_index is exclusive or inclusive.
         while (i < end_index) : (i += 1) {
-            const offset = self.offsets[i];
+            const offset = self.offsets[i] + g_offset_correction;
             const comment = self.comments[i];
 
             const hours = @floatToInt(u32, offset / (60 * 60));
@@ -134,8 +134,22 @@ const Comments = struct {
     }
 };
 
+var g_offset_correction: f64 = 0.0;
+
 pub fn main() anyerror!void {
     const allocator = std.heap.page_allocator;
+    // TODO?: Not sure if need it.
+    // Some twitch vods start at ~01:07
+
+    var arg_it = std.process.args();
+    _ = arg_it.skip();
+    var arg = arg_it.nextPosix();
+    if (arg) |value| {
+        g_offset_correction = fmt.parseFloat(f64, value) catch {
+            warn("Failed to parse float value.\n", .{});
+            return;
+        };
+    }
 
     warn("==> Connect to MPV socket\n", .{});
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
@@ -550,7 +564,7 @@ const Mpv = struct {
                 const data = root.Object.get("data").?.value;
                 switch (@intToEnum(Property, @intCast(u1, property_id.value.Integer))) {
                     .PlaybackTime => {
-                        self.video_time = data.Float;
+                        self.video_time = data.Float - g_offset_correction;
                     },
                     .Path => {
                         self.allocator.free(self.video_path);

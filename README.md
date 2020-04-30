@@ -8,6 +8,7 @@ Development:
 echo src/main.zig | entr -c -r zig build run
 
 
+
 Run MPV with socket file
 mpv --input-ipc-server=/tmp/mpv-twitch https://www.youtube.com/watch?v=Lo3rrP8u7Mw
 mpv --playlist=/home/ck/sources/music/songs.txt --input-ipc-server=/tmp/mpv-twitch --ytdl-format=worstvideo+bestaudio/best --loop-playlist --shuffle
