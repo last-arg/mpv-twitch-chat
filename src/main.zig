@@ -609,3 +609,61 @@ const Mpv = struct {
         self.allocator.free(self.video_path);
     }
 };
+
+// TODO?: Combine MpvData and MpvEvent
+const MpvData = struct {
+    data: ?f32,
+    @"error": []const u8,
+};
+
+const MpvEvent = struct {
+    event: []const u8,
+};
+
+const MpvCommand = struct {
+    command: [][]const u8,
+    request_id: usize,
+};
+
+test "mpv json ipc" {
+    // NOTE: data field can be null
+    {
+        const json_str =
+            \\{"data":190.482000,"error":"success"}
+        ;
+
+        var stream = std.json.TokenStream.init(json_str);
+        const resp = try std.json.parse(MpvData, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(MpvData, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(resp.data.? == 190.482000);
+        std.testing.expect(mem.eql(u8, "success", resp.@"error"));
+    }
+
+    {
+        const json_str =
+            \\{ "event": "event_name" }
+        ;
+        var stream = std.json.TokenStream.init(json_str);
+        const resp = try std.json.parse(MpvEvent, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(MpvEvent, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(mem.eql(u8, "event_name", resp.event));
+    }
+
+    {
+        var c1: []const u8 = "get_property";
+        var c2: []const u8 = "playback-time";
+        const cmd = MpvCommand{
+            .command = &[_][]const u8{ c1, c2 },
+            .request_id = 0,
+        };
+
+        var buf: [100]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buf);
+        var result_str = std.ArrayList(u8).init(&fba.allocator);
+        try std.json.stringify(cmd, .{}, result_str.writer());
+
+        std.testing.expect(mem.eql(u8, result_str.items,
+            \\{"command":["get_property","playback-time"],"request_id":0}
+        ));
+    }
+}
