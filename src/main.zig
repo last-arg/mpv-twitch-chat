@@ -184,7 +184,7 @@ pub fn main() anyerror!void {
     defer comments.deinit();
 
     while (true) {
-        try mpv.requestProperty(.PlaybackTime);
+        try mpv.getProperty(.PlaybackTime);
         try mpv.readResponses();
 
         // warn("pos: {d}\n", .{mpv.video_time});
@@ -506,6 +506,21 @@ fn expect(ctx: *Context, char: u8) !void {
 const Mpv = struct {
     const Self = @This();
 
+    // TODO?: Combine Data and Event
+    pub const Data = struct {
+        data: ?f32,
+        @"error": []const u8,
+    };
+
+    pub const Event = struct {
+        event: []const u8,
+    };
+
+    pub const Command = struct {
+        command: [][]const u8,
+        request_id: usize,
+    };
+
     fd: os.fd_t,
     allocator: *Allocator,
     video_path: []const u8 = "",
@@ -525,30 +540,45 @@ const Mpv = struct {
         };
 
         // Set video path
-        try self.requestProperty(Property.Path);
+        try self.getProperty(Property.Path);
         try self.readResponses();
         // Set video playback time
-        try self.requestProperty(Property.PlaybackTime);
+        try self.getProperty(Property.PlaybackTime);
         try self.readResponses();
 
         return self;
     }
 
-    pub fn requestProperty(self: *Self, property: Property) !void {
+    // TODO: rename to getProperty()
+    pub fn getProperty(self: *Self, property: Property) !void {
+        var get_property: []const u8 = "get_property";
+
         const cmd = blk: {
             switch (property) {
                 .PlaybackTime => {
-                    const property_id = comptime try propertyIntToString(Property.PlaybackTime);
-                    break :blk "{ \"command\": [\"get_property\", \"playback-time\"], request_id:" ++ property_id ++ " }\r\n";
+                    const property_name: []const u8 = "playback-time";
+                    break :blk Mpv.Command{
+                        .command = &[_][]const u8{ get_property, property_name },
+                        .request_id = @enumToInt(Property.PlaybackTime),
+                    };
                 },
                 .Path => {
-                    const property_id = comptime try propertyIntToString(Property.Path);
-                    break :blk "{ \"command\": [\"get_property\", \"path\"], request_id:" ++ property_id ++ " }\r\n";
+                    const property_name: []const u8 = "path";
+                    break :blk Mpv.Command{
+                        .command = &[_][]const u8{ get_property, property_name },
+                        .request_id = @enumToInt(Property.Path),
+                    };
                 },
             }
         };
 
-        _ = try os.write(self.fd, cmd);
+        var buf: [100]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buf);
+        var request_str = std.ArrayList(u8).init(&fba.allocator);
+        try std.json.stringify(cmd, .{}, request_str.writer());
+        try request_str.appendSlice("\r\n");
+
+        _ = try os.write(self.fd, request_str.items);
     }
 
     pub fn readResponses(self: *Self) !void {
@@ -610,21 +640,6 @@ const Mpv = struct {
     }
 };
 
-// TODO?: Combine MpvData and MpvEvent
-const MpvData = struct {
-    data: ?f32,
-    @"error": []const u8,
-};
-
-const MpvEvent = struct {
-    event: []const u8,
-};
-
-const MpvCommand = struct {
-    command: [][]const u8,
-    request_id: usize,
-};
-
 test "mpv json ipc" {
     // NOTE: data field can be null
     {
@@ -633,8 +648,8 @@ test "mpv json ipc" {
         ;
 
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(MpvData, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(MpvData, resp, .{ .allocator = std.testing.allocator });
+        const resp = try std.json.parse(Mpv.Data, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = std.testing.allocator });
         std.testing.expect(resp.data.? == 190.482000);
         std.testing.expect(mem.eql(u8, "success", resp.@"error"));
     }
@@ -644,15 +659,15 @@ test "mpv json ipc" {
             \\{ "event": "event_name" }
         ;
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(MpvEvent, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(MpvEvent, resp, .{ .allocator = std.testing.allocator });
+        const resp = try std.json.parse(Mpv.Event, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.Event, resp, .{ .allocator = std.testing.allocator });
         std.testing.expect(mem.eql(u8, "event_name", resp.event));
     }
 
     {
         var c1: []const u8 = "get_property";
         var c2: []const u8 = "playback-time";
-        const cmd = MpvCommand{
+        const cmd = Mpv.Command{
             .command = &[_][]const u8{ c1, c2 },
             .request_id = 0,
         };
