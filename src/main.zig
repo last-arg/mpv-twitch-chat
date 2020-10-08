@@ -170,7 +170,6 @@ pub fn main() anyerror!void {
     // defer twitch.deinit();
     // warn("{}\n", .{twitch});
 
-    warn("==> {}\n", .{mpv.video_time});
     warn("==> Download comments\n", .{});
     var corrected_time = blk: {
         const time = mpv.video_time - g_chat_time_correction;
@@ -184,7 +183,7 @@ pub fn main() anyerror!void {
     defer comments.deinit();
 
     while (true) {
-        try mpv.requestProperty(.PlaybackTime);
+        try mpv.requestProperty("playback-time");
         try mpv.readResponses();
 
         // warn("pos: {d}\n", .{mpv.video_time});
@@ -504,6 +503,11 @@ fn expect(ctx: *Context, char: u8) !void {
 }
 
 const Mpv = struct {
+    fd: os.fd_t,
+    allocator: *Allocator,
+    video_path: []const u8 = "",
+    video_time: f64 = 0.0,
+
     const Self = @This();
 
     pub const Data = struct {
@@ -511,7 +515,7 @@ const Mpv = struct {
             String: []const u8,
             Float: f32,
         },
-        request_id: usize,
+        request_id: usize, // Don't use
         @"error": []const u8,
     };
 
@@ -521,18 +525,6 @@ const Mpv = struct {
 
     pub const Command = struct {
         command: [][]const u8,
-        request_id: usize,
-    };
-
-    fd: os.fd_t,
-    allocator: *Allocator,
-    video_path: []const u8 = "",
-    video_time: f64 = 0.0,
-
-    // TODO?: remove Mpv.Property and request_id field from different structs. In current implementation find right value based on type.
-    pub const Property = enum {
-        Path,
-        PlaybackTime,
     };
 
     pub fn init(allocator: *Allocator, socket_path: []const u8) !Self {
@@ -544,35 +536,20 @@ const Mpv = struct {
         };
 
         // Set video path
-        try self.requestProperty(Property.Path);
+        try self.requestProperty("path");
         try self.readResponses();
         // Set video playback time
-        try self.requestProperty(Property.PlaybackTime);
+        try self.requestProperty("playback-time");
         try self.readResponses();
 
         return self;
     }
 
-    pub fn requestProperty(self: *Self, property: Property) !void {
+    pub fn requestProperty(self: *Self, property: []const u8) !void {
         var get_property: []const u8 = "get_property";
 
-        const cmd = blk: {
-            switch (property) {
-                .PlaybackTime => {
-                    const property_name: []const u8 = "playback-time";
-                    break :blk Mpv.Command{
-                        .command = &[_][]const u8{ get_property, property_name },
-                        .request_id = @enumToInt(Property.PlaybackTime),
-                    };
-                },
-                .Path => {
-                    const property_name: []const u8 = "path";
-                    break :blk Mpv.Command{
-                        .command = &[_][]const u8{ get_property, property_name },
-                        .request_id = @enumToInt(Property.Path),
-                    };
-                },
-            }
+        const cmd = Mpv.Command{
+            .command = &[_][]const u8{ get_property, property },
         };
 
         var buf: [100]u8 = undefined;
