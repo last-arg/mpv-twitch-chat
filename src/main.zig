@@ -161,8 +161,8 @@ pub fn main() anyerror!void {
     defer mpv.deinit();
 
     // Get twitch video ID.
-    // const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-    const url = mpv.video_path;
+    const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+    // const url = mpv.video_path;
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1; // NOTE: need the pos after '/'.
     const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
 
@@ -506,15 +506,11 @@ fn expect(ctx: *Context, char: u8) !void {
 const Mpv = struct {
     const Self = @This();
 
-    // TODO?: Combine Data and Event
-    pub const DataString = struct {
-        data: ?[]const u8,
-        request_id: usize,
-        @"error": []const u8,
-    };
-
-    pub const DataF32 = struct {
-        data: ?f32,
+    pub const Data = struct {
+        data: ?union(enum) {
+            String: []const u8,
+            Float: f32,
+        },
         request_id: usize,
         @"error": []const u8,
     };
@@ -597,37 +593,31 @@ const Mpv = struct {
         var it = json_obj.next();
 
         while (it) |json_str| : (it = json_obj.next()) {
-            var stream_data_string = std.json.TokenStream.init(json_str);
-            if (std.json.parse(Mpv.DataString, &stream_data_string, .{ .allocator = self.allocator })) |resp| {
-                defer std.json.parseFree(Mpv.DataString, resp, .{ .allocator = self.allocator });
-                if (!mem.eql(u8, "success", resp.@"error")) {
-                    warn("Mpv json field error isn't success\n", .{});
-                }
-                if (resp.data) |url| {
-                    self.allocator.free(self.video_path);
-                    self.video_path = try mem.dupe(self.allocator, u8, url);
-                } else {
-                    warn("Mpv json field data is null\n", .{});
-                }
-                continue;
-            } else |err| {
-                if (err != error.UnknownField and err != error.UnexpectedToken) return err;
-            }
+            var stream = std.json.TokenStream.init(json_str);
 
-            var stream_data_f32 = std.json.TokenStream.init(json_str);
-            if (std.json.parse(Mpv.DataF32, &stream_data_f32, .{ .allocator = self.allocator })) |resp| {
-                defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = self.allocator });
+            if (std.json.parse(Mpv.Data, &stream, .{ .allocator = self.allocator })) |resp| {
+                defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = self.allocator });
+
                 if (!mem.eql(u8, "success", resp.@"error")) {
-                    warn("Mpv json field error isn't success\n", .{});
+                    warn("WARN: Mpv json field error isn't success\n", .{});
                 }
-                if (resp.data) |time| {
-                    self.video_time = time;
+
+                if (resp.data) |data| {
+                    switch (data) {
+                        .String => |url| {
+                            self.allocator.free(self.video_path);
+                            self.video_path = try mem.dupe(self.allocator, u8, url);
+                        },
+                        .Float => |time| {
+                            self.video_time = time;
+                        },
+                    }
                 } else {
-                    warn("Mpv json field data is null\n", .{});
+                    warn("WARN: Mpv json field data is null\n", .{});
                 }
                 continue;
             } else |err| {
-                if (err != error.UnknownField and err != error.UnexpectedToken) return err;
+                warn("MPV Data Error: {}\n", .{err});
             }
 
             var stream_event = std.json.TokenStream.init(json_str);
@@ -650,9 +640,9 @@ test "mpv json ipc" {
         ;
 
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(Mpv.DataF32, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = std.testing.allocator });
-        std.testing.expect(resp.data.? == 190.482000);
+        const resp = try std.json.parse(Mpv.Data, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(resp.data.?.Float == 190.482000);
         std.testing.expect(mem.eql(u8, "success", resp.@"error"));
     }
 
@@ -662,20 +652,20 @@ test "mpv json ipc" {
         ;
 
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(Mpv.DataString, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(Mpv.DataString, resp, .{ .allocator = std.testing.allocator });
-        std.testing.expect(mem.eql(u8, "/path/tosomewhere/", resp.data.?));
+        const resp = try std.json.parse(Mpv.Data, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(mem.eql(u8, "/path/tosomewhere/", resp.data.?.String));
         std.testing.expect(mem.eql(u8, "success", resp.@"error"));
     }
 
     {
         const json_str =
-            \\{"data":null,"error":"success","request_id":1}
+            \\{"data":null,"error":"success","request_id":0}
         ;
 
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(Mpv.DataF32, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = std.testing.allocator });
+        const resp = try std.json.parse(Mpv.Data, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = std.testing.allocator });
         std.testing.expect(resp.data == null);
         std.testing.expect(mem.eql(u8, "success", resp.@"error"));
     }
