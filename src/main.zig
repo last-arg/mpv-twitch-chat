@@ -3,8 +3,7 @@ const warn = std.debug.warn;
 const assert = std.debug.assert;
 const net = std.net;
 const Address = std.net.Address;
-const http = std.http;
-const Headers = std.http.Headers;
+const StringArrayHashMap = std.StringArrayHashMap;
 const os = std.os;
 const fmt = std.fmt;
 const json = std.json;
@@ -15,8 +14,14 @@ const ArrayList = std.ArrayList;
 const ascii = std.ascii;
 const c = @import("c.zig");
 
-// TODO: Function 'Twitch.requestCommentsJson' will throw 'error: SSLConnection'
+// TODO: non-blocking mode messes up openssl functions.
+// https://stackoverflow.com/a/31174268
+// SSL_pending()
+// https://groups.google.com/forum/#!msg/mailing.openssl.users/nJRF_JVnPkc/377tgaE4sRgJ
 // pub const io_mode = .evented;
+
+// TODO: chat log correction
+var g_chat_time_correction: f64 = 0.0;
 
 const Context = struct {
     buf: []const u8,
@@ -48,7 +53,7 @@ const Comments = struct {
 
         const root = tree.root;
 
-        if (root.Object.get("comments")) |comments| {
+        if (root.Object.getEntry("comments")) |comments| {
             const num = comments.value.Array.items.len;
 
             var offsets_array = try ArrayList(f64).initCapacity(allocator, num);
@@ -58,15 +63,15 @@ const Comments = struct {
             errdefer comments_array.deinit();
 
             for (comments.value.Array.items) |comment| {
-                const commenter = comment.Object.get("commenter").?.value;
-                const name = commenter.Object.get("display_name").?.value.String;
+                const commenter = comment.Object.getEntry("commenter").?.value;
+                const name = commenter.Object.getEntry("display_name").?.value.String;
 
-                const message = comment.Object.get("message").?.value;
-                const message_body = message.Object.get("body").?.value.String;
+                const message = comment.Object.getEntry("message").?.value;
+                const message_body = message.Object.getEntry("body").?.value.String;
 
                 // NOTE: can be a float or int
                 const offset_seconds = blk: {
-                    const offset_value = comment.Object.get("content_offset_seconds").?.value;
+                    const offset_value = comment.Object.getEntry("content_offset_seconds").?.value;
                     switch (offset_value) {
                         .Integer => |integer| break :blk @intToFloat(f64, integer),
                         .Float => |float| break :blk float,
@@ -91,8 +96,8 @@ const Comments = struct {
                 .offsets = offsets_array.toOwnedSlice(),
                 .comments = comments_array.toOwnedSlice(),
                 .allocator = allocator,
-                .is_last = root.Object.get("_next") == null,
-                .is_first = root.Object.get("_prev") == null,
+                .is_last = root.Object.getEntry("_next") == null,
+                .is_first = root.Object.getEntry("_prev") == null,
             };
         }
 
@@ -102,7 +107,7 @@ const Comments = struct {
     pub fn printComments(self: Self, start_index: usize, end_index: usize) !void {
         var i = start_index;
         while (i < end_index) : (i += 1) {
-            const offset = self.offsets[i] + g_offset_correction;
+            const offset = self.offsets[i] + g_chat_time_correction;
             const comment = self.comments[i];
 
             const hours = @floatToInt(u32, offset / (60 * 60));
@@ -121,19 +126,20 @@ const Comments = struct {
             const esc_char = [_]u8{27};
             const BOLD = esc_char ++ "[1m";
             const RESET = esc_char ++ "[0m";
-            var buf: [1024]u8 = undefined; // NOTE: IRC max message length is 512 + extra
-            const b = try fmt.bufPrint(buf[0..], "[{d}:{d:0<2}:{d:0<2}] " ++ BOLD ++ "{}" ++ RESET ++ ": {}\n", .{ hours, minutes, seconds, comment.name, comment.body });
+            var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
+            const b = try fmt.bufPrint(buf[0..], "[{d}:{d:0<2}:{d:0<2}] " ++ BOLD ++ "{}" ++ RESET ++ ":\n{}\n", .{ hours, minutes, seconds, comment.name, comment.body });
             try stdout.writeAll(b);
         }
     }
 
     pub fn deinit(self: Self) void {
+        for (self.comments) |comment| {
+            self.allocator.free(comment.body);
+        }
         self.allocator.free(self.offsets);
         self.allocator.free(self.comments);
     }
 };
-
-var g_offset_correction: f64 = 0.0;
 
 pub fn main() anyerror!void {
     const allocator = std.heap.page_allocator;
@@ -144,7 +150,7 @@ pub fn main() anyerror!void {
     _ = arg_it.skip();
     var arg = arg_it.nextPosix();
     if (arg) |value| {
-        g_offset_correction = fmt.parseFloat(f64, value) catch {
+        g_chat_time_correction = fmt.parseFloat(f64, value) catch {
             warn("Failed to parse float value.\n", .{});
             return;
         };
@@ -155,7 +161,7 @@ pub fn main() anyerror!void {
     defer mpv.deinit();
 
     // Get twitch video ID.
-    // const url = "https://www.twitch.tv/videos/604738742?t=8h47m8s";
+    // const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
     const url = mpv.video_path;
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1; // NOTE: need the pos after '/'.
     const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
@@ -167,7 +173,7 @@ pub fn main() anyerror!void {
     // warn("==> {}\n", .{url[start_index..end_index]});
     warn("==> Download comments\n", .{});
     var corrected_time = blk: {
-        const time = mpv.video_time - g_offset_correction;
+        const time = mpv.video_time - g_chat_time_correction;
         if (time < 0) break :blk 0.0;
         break :blk time;
     };
@@ -183,7 +189,7 @@ pub fn main() anyerror!void {
 
         // warn("pos: {d}\n", .{mpv.video_time});
         corrected_time = blk: {
-            const time = mpv.video_time - g_offset_correction;
+            const time = mpv.video_time - g_chat_time_correction;
             if (time < 0) break :blk 0.0;
             break :blk time;
         };
@@ -241,7 +247,7 @@ pub fn main() anyerror!void {
             continue;
         }
 
-        std.time.sleep(std.time.second * 0.5);
+        std.time.sleep(std.time.ns_per_s * 0.5);
     }
 }
 
@@ -267,16 +273,16 @@ const Twitch = struct {
         const request_line = try std.fmt.allocPrint(self.allocator, "GET {} HTTP/1.1", .{location});
         defer self.allocator.free(request_line);
 
-        var headers = http.Headers.init(self.allocator);
-        defer headers.deinit();
-
         // TODO: change accept to twitch+json
-        try headers.append("Accept", "*/*", null);
-        try headers.append("Connection", "close", null);
-        try headers.append("Host", "api.twitch.tv", null);
-        try headers.append("Client-ID", "yaoofm88l1kvv8i9zx7pyc44he2tcp", null);
+        const header_entries =
+            \\Accept: */*
+            \\Connection: close
+            \\Host: api.twitch.tv
+            \\Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp
+            \\
+        ;
 
-        const headers_str = try std.fmt.allocPrint(self.allocator, "{}\n{}\n", .{ request_line, headers });
+        const headers_str = try std.fmt.allocPrint(self.allocator, "{}\r\n{}\r\n", .{ request_line, header_entries });
         defer self.allocator.free(headers_str);
         // warn("{}\n", .{headers_str});
 
@@ -309,11 +315,7 @@ const Twitch = struct {
             return error.SetSSLFileDescriptor;
         }
 
-        const ssl_fd = c.SSL_connect(ssl);
-
-        if (ssl_fd != 1) {
-            return error.SSLConnection;
-        }
+        try c.sslConnect(ssl);
 
         const write_success = c.SSL_write(ssl, @ptrCast(*const c_void, headers_str), @intCast(c_int, headers_str.len));
         if (write_success <= 0) {
@@ -323,8 +325,7 @@ const Twitch = struct {
         // warn("=================\n", .{});
         var buf: [1024 * 100]u8 = undefined;
 
-        const first_bytes = c.SSL_read(ssl, @ptrCast(*c_void, &buf), buf.len);
-        if (first_bytes <= 0) return error.NoHeader;
+        var first_bytes = try c.sslRead(ssl, host_socket.handle, &buf);
 
         // Parse header
         var context = Context{
@@ -356,6 +357,7 @@ const Twitch = struct {
 
         try expect(&context, '\n');
 
+        const Headers = StringArrayHashMap([]const u8);
         // Parse header fields
         var h = Headers.init(self.allocator);
         defer h.deinit();
@@ -386,7 +388,7 @@ const Twitch = struct {
 
             const value = mem.trim(u8, context.buf[cur .. context.index - 2], " ");
             cur = context.index;
-            try h.append(name, value, null);
+            try h.put(name, value);
         }
 
         try expect(&context, '\r');
@@ -395,8 +397,8 @@ const Twitch = struct {
         { // Check header fields 'transfer_encoding', 'Content-Type'
             var is_error = true;
             const search_value_1 = "chunked";
-            for (h.toSlice()) |e| {
-                if (mem.eql(u8, e.name, "transfer-encoding") and
+            for (h.items()) |e| {
+                if (mem.eql(u8, e.key, "transfer-encoding") and
                     e.value.len >= search_value_1.len and
                     mem.eql(u8, e.value[0..search_value_1.len], search_value_1))
                 {
@@ -409,8 +411,8 @@ const Twitch = struct {
 
             is_error = true;
             const search_value_2 = "application/json";
-            for (h.toSlice()) |e| {
-                if (mem.eql(u8, e.name, "Content-Type") and
+            for (h.items()) |e| {
+                if (mem.eql(u8, e.key, "Content-Type") and
                     e.value.len >= search_value_2.len and
                     mem.eql(u8, e.value[0..search_value_2.len], search_value_2))
                 {
@@ -429,8 +431,8 @@ const Twitch = struct {
 
         var body = ArrayList(u8).init(self.allocator);
         while (true) {
-            const bytes = c.SSL_read(ssl, @ptrCast(*c_void, &buf), buf.len);
-            const chunk_part = buf[0..@intCast(usize, bytes)];
+            const bytes = try c.sslRead(ssl, host_socket.handle, &buf);
+            const chunk_part = buf[0..bytes];
             // warn("{}\n", .{chunk_part});
 
             // TODO: not the best solution
@@ -451,10 +453,10 @@ const Twitch = struct {
                 const chunk_length = try fmt.parseUnsigned(u32, chunk_part[0..index], 16);
                 var chunk_count: u32 = 0;
                 while (true) {
-                    const chunk_bytes = c.SSL_read(ssl, @ptrCast(*c_void, &buf), buf.len);
+                    const chunk_bytes = try c.sslRead(ssl, host_socket.handle, &buf);
 
                     // TODO: allocate chunk parts
-                    const chunk_buf = buf[0..@intCast(usize, chunk_bytes)];
+                    const chunk_buf = buf[0..chunk_bytes];
                     try body.appendSlice(chunk_buf);
                     // warn("{}", .{chunk_buf});
                     chunk_count += @intCast(u32, chunk_bytes);
@@ -556,6 +558,8 @@ const Mpv = struct {
         var p = Parser.init(self.allocator, false);
         defer p.deinit();
 
+        // TODO: not sure about line ending
+        // Maybe use line_sep from cstr.zig
         const json_objs = mem.trimRight(u8, buf[0..bytes], "\r\n");
         var json_obj = mem.split(json_objs, "\n");
         var it = json_obj.next();
@@ -568,9 +572,9 @@ const Mpv = struct {
 
             const root = tree.root;
 
-            if (root.Object.get("request_id")) |property_id| {
-                if (!mem.eql(u8, root.Object.get("error").?.value.String, "success")) continue;
-                const data = root.Object.get("data").?.value;
+            if (root.Object.getEntry("request_id")) |property_id| {
+                if (!mem.eql(u8, root.Object.getEntry("error").?.value.String, "success")) continue;
+                const data = root.Object.getEntry("data").?.value;
                 switch (@intToEnum(Property, @intCast(u1, property_id.value.Integer))) {
                     .PlaybackTime => {
                         self.video_time = data.Float;
@@ -580,7 +584,7 @@ const Mpv = struct {
                         self.video_path = try mem.dupe(self.allocator, u8, data.String);
                     },
                 }
-            } else if (root.Object.get("event")) |event| {
+            } else if (root.Object.getEntry("event")) |event| {
                 const e = event.value.String;
                 warn("EVENT: {}\n", .{e});
             }

@@ -5,7 +5,7 @@ There is newer Twitch API but that doesn't support getting chat history/comments
 
 
 Development:
-echo src/main.zig | entr -c -r zig build run
+ls src/* | entr -c -r zig build run
 
 
 Build:
@@ -32,9 +32,9 @@ test.h content example:
 
 Testing
 curl -H 'Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp' \
--X GET 'https://api.twitch.tv/v5/videos/591919628/comments?content_offset_seconds=1.0'
+-X GET 'https://api.twitch.tv/v5/videos/762169747/comments?content_offset_seconds=1.0'
 
 curl -H 'Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp' \
--X GET 'https://api.twitch.tv/v5/videos/591919628/comments?content_offset_seconds=13028.249'
+-X GET 'https://api.twitch.tv/v5/videos/762169747/comments?content_offset_seconds=13028.249'
 
 
