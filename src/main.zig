@@ -170,7 +170,7 @@ pub fn main() anyerror!void {
     // defer twitch.deinit();
     // warn("{}\n", .{twitch});
 
-    // warn("==> {}\n", .{url[start_index..end_index]});
+    warn("==> {}\n", .{mpv.video_time});
     warn("==> Download comments\n", .{});
     var corrected_time = blk: {
         const time = mpv.video_time - g_chat_time_correction;
@@ -184,7 +184,7 @@ pub fn main() anyerror!void {
     defer comments.deinit();
 
     while (true) {
-        try mpv.getProperty(.PlaybackTime);
+        try mpv.requestProperty(.PlaybackTime);
         try mpv.readResponses();
 
         // warn("pos: {d}\n", .{mpv.video_time});
@@ -507,8 +507,15 @@ const Mpv = struct {
     const Self = @This();
 
     // TODO?: Combine Data and Event
-    pub const Data = struct {
+    pub const DataString = struct {
+        data: ?[]const u8,
+        request_id: usize,
+        @"error": []const u8,
+    };
+
+    pub const DataF32 = struct {
         data: ?f32,
+        request_id: usize,
         @"error": []const u8,
     };
 
@@ -526,6 +533,7 @@ const Mpv = struct {
     video_path: []const u8 = "",
     video_time: f64 = 0.0,
 
+    // TODO?: remove Mpv.Property and request_id field from different structs. In current implementation find right value based on type.
     pub const Property = enum {
         Path,
         PlaybackTime,
@@ -540,17 +548,16 @@ const Mpv = struct {
         };
 
         // Set video path
-        try self.getProperty(Property.Path);
+        try self.requestProperty(Property.Path);
         try self.readResponses();
         // Set video playback time
-        try self.getProperty(Property.PlaybackTime);
+        try self.requestProperty(Property.PlaybackTime);
         try self.readResponses();
 
         return self;
     }
 
-    // TODO: rename to getProperty()
-    pub fn getProperty(self: *Self, property: Property) !void {
+    pub fn requestProperty(self: *Self, property: Property) !void {
         var get_property: []const u8 = "get_property";
 
         const cmd = blk: {
@@ -585,53 +592,49 @@ const Mpv = struct {
         var buf: [512]u8 = undefined;
         const bytes = try os.read(self.fd, buf[0..]);
 
-        var p = Parser.init(self.allocator, false);
-        defer p.deinit();
-
-        // TODO: not sure about line ending
-        // Maybe use line_sep from cstr.zig
         const json_objs = mem.trimRight(u8, buf[0..bytes], "\r\n");
         var json_obj = mem.split(json_objs, "\n");
         var it = json_obj.next();
-        while (it) |obj| : (it = json_obj.next()) {
-            p.reset();
 
-            // TODO: maybe can reuse memory
-            var tree = try p.parse(obj);
-            defer tree.deinit();
-
-            const root = tree.root;
-
-            if (root.Object.getEntry("request_id")) |property_id| {
-                if (!mem.eql(u8, root.Object.getEntry("error").?.value.String, "success")) continue;
-                const data = root.Object.getEntry("data").?.value;
-                switch (@intToEnum(Property, @intCast(u1, property_id.value.Integer))) {
-                    .PlaybackTime => {
-                        self.video_time = data.Float;
-                    },
-                    .Path => {
-                        self.allocator.free(self.video_path);
-                        self.video_path = try mem.dupe(self.allocator, u8, data.String);
-                    },
+        while (it) |json_str| : (it = json_obj.next()) {
+            var stream_data_string = std.json.TokenStream.init(json_str);
+            if (std.json.parse(Mpv.DataString, &stream_data_string, .{ .allocator = self.allocator })) |resp| {
+                defer std.json.parseFree(Mpv.DataString, resp, .{ .allocator = self.allocator });
+                if (!mem.eql(u8, "success", resp.@"error")) {
+                    warn("Mpv json field error isn't success\n", .{});
                 }
-            } else if (root.Object.getEntry("event")) |event| {
-                const e = event.value.String;
-                warn("EVENT: {}\n", .{e});
+                if (resp.data) |url| {
+                    self.allocator.free(self.video_path);
+                    self.video_path = try mem.dupe(self.allocator, u8, url);
+                } else {
+                    warn("Mpv json field data is null\n", .{});
+                }
+                continue;
+            } else |err| {
+                if (err != error.UnknownField and err != error.UnexpectedToken) return err;
             }
+
+            var stream_data_f32 = std.json.TokenStream.init(json_str);
+            if (std.json.parse(Mpv.DataF32, &stream_data_f32, .{ .allocator = self.allocator })) |resp| {
+                defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = self.allocator });
+                if (!mem.eql(u8, "success", resp.@"error")) {
+                    warn("Mpv json field error isn't success\n", .{});
+                }
+                if (resp.data) |time| {
+                    self.video_time = time;
+                } else {
+                    warn("Mpv json field data is null\n", .{});
+                }
+                continue;
+            } else |err| {
+                if (err != error.UnknownField and err != error.UnexpectedToken) return err;
+            }
+
+            var stream_event = std.json.TokenStream.init(json_str);
+            const resp = try std.json.parse(Mpv.Event, &stream_event, .{ .allocator = self.allocator });
+            defer std.json.parseFree(Mpv.Event, resp, .{ .allocator = self.allocator });
+            warn("EVENT: {}\n", .{resp.event});
         }
-    }
-
-    fn propertyIntToString(comptime property: Property) ![]const u8 {
-        const request_id_str = comptime blk: {
-            // NOTE: Mpv.Property enum int value should not be 100 or bigger.
-            var buf: [2]u8 = undefined;
-            break :blk try intToString(@enumToInt(property), &buf);
-        };
-        return request_id_str;
-    }
-
-    fn intToString(int: u32, buf: []u8) ![]const u8 {
-        return try std.fmt.bufPrint(buf, "{}", .{int});
     }
 
     pub fn deinit(self: *Self) void {
@@ -641,16 +644,39 @@ const Mpv = struct {
 };
 
 test "mpv json ipc" {
-    // NOTE: data field can be null
     {
         const json_str =
-            \\{"data":190.482000,"error":"success"}
+            \\{"data":190.482000,"error":"success","request_id":1}
         ;
 
         var stream = std.json.TokenStream.init(json_str);
-        const resp = try std.json.parse(Mpv.Data, &stream, .{ .allocator = std.testing.allocator });
-        defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = std.testing.allocator });
+        const resp = try std.json.parse(Mpv.DataF32, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = std.testing.allocator });
         std.testing.expect(resp.data.? == 190.482000);
+        std.testing.expect(mem.eql(u8, "success", resp.@"error"));
+    }
+
+    {
+        const json_str =
+            \\{"data":"/path/tosomewhere/","error":"success","request_id":0}
+        ;
+
+        var stream = std.json.TokenStream.init(json_str);
+        const resp = try std.json.parse(Mpv.DataString, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.DataString, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(mem.eql(u8, "/path/tosomewhere/", resp.data.?));
+        std.testing.expect(mem.eql(u8, "success", resp.@"error"));
+    }
+
+    {
+        const json_str =
+            \\{"data":null,"error":"success","request_id":1}
+        ;
+
+        var stream = std.json.TokenStream.init(json_str);
+        const resp = try std.json.parse(Mpv.DataF32, &stream, .{ .allocator = std.testing.allocator });
+        defer std.json.parseFree(Mpv.DataF32, resp, .{ .allocator = std.testing.allocator });
+        std.testing.expect(resp.data == null);
         std.testing.expect(mem.eql(u8, "success", resp.@"error"));
     }
 
