@@ -27,8 +27,6 @@ const Context = struct {
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
-    // TODO?: Not sure if need it.
-    // Some twitch vods start at ~01:07
 
     var arg_it = std.process.args();
     _ = arg_it.skip();
