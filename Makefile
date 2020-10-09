@@ -6,3 +6,6 @@ test-main:
 
 test-mpv:
 	echo "src/mpv.zig" | entr -c -r zig test src/mpv.zig
+
+test-comments:
+	echo "src/comments.zig" | entr -c -r zig test src/comments.zig	

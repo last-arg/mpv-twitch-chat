@@ -2,18 +2,15 @@ const std = @import("std");
 const warn = std.debug.warn;
 const assert = std.debug.assert;
 const net = std.net;
-const Address = std.net.Address;
 const StringArrayHashMap = std.StringArrayHashMap;
 const os = std.os;
 const fmt = std.fmt;
-const json = std.json;
-const Parser = std.json.Parser;
 const mem = std.mem;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const ascii = std.ascii;
 const c = @import("c.zig");
 const Mpv = @import("mpv.zig").Mpv;
+const Comments = @import("comments.zig").Comments;
 
 // TODO: non-blocking mode messes up openssl functions.
 // https://stackoverflow.com/a/31174268
@@ -21,125 +18,10 @@ const Mpv = @import("mpv.zig").Mpv;
 // https://groups.google.com/forum/#!msg/mailing.openssl.users/nJRF_JVnPkc/377tgaE4sRgJ
 // pub const io_mode = .evented;
 
-// TODO: chat log correction
-var g_chat_time_correction: f64 = 0.0;
-
 const Context = struct {
     buf: []const u8,
     count: usize = 0,
     index: usize = 0,
-};
-
-const Comments = struct {
-    offsets: []const f64,
-    comments: []const Comment,
-    allocator: *Allocator,
-    next_index: usize = 0,
-    // TODO?: Make these bools into enum instead?
-    is_last: bool = false,
-    is_first: bool = false,
-
-    const Self = @This();
-    const Comment = struct {
-        name: []const u8,
-        body: []u8,
-    };
-
-    pub fn initTwitchJson(allocator: *Allocator, json_str: []const u8) !Self {
-        var p = Parser.init(allocator, false);
-        defer p.deinit();
-
-        var tree = try p.parse(json_str);
-        defer tree.deinit();
-
-        const root = tree.root;
-
-        if (root.Object.getEntry("comments")) |comments| {
-            const num = comments.value.Array.items.len;
-
-            var offsets_array = try ArrayList(f64).initCapacity(allocator, num);
-            errdefer offsets_array.deinit();
-
-            var comments_array = try ArrayList(Comment).initCapacity(allocator, num);
-            errdefer comments_array.deinit();
-
-            for (comments.value.Array.items) |comment| {
-                const commenter = comment.Object.getEntry("commenter").?.value;
-                const name = commenter.Object.getEntry("display_name").?.value.String;
-
-                const message = comment.Object.getEntry("message").?.value;
-                const message_body = message.Object.getEntry("body").?.value.String;
-
-                // NOTE: can be a float or int
-                const offset_seconds = blk: {
-                    const offset_value = comment.Object.getEntry("content_offset_seconds").?.value;
-                    switch (offset_value) {
-                        .Integer => |integer| break :blk @intToFloat(f64, integer),
-                        .Float => |float| break :blk float,
-                        else => unreachable,
-                    }
-                };
-
-                var new_comment = Comment{
-                    .name = name,
-                    // .body = message_body[0..],
-                    // TODO?: might be memory leak. might require separate freeing ???
-                    .body = try mem.dupe(allocator, u8, message_body),
-                    // .body = undefined,
-                };
-                // mem.copy(u8, new_comment.body, message_body[0..]);
-                try comments_array.append(new_comment);
-
-                try offsets_array.append(offset_seconds);
-            }
-
-            return Self{
-                .offsets = offsets_array.toOwnedSlice(),
-                .comments = comments_array.toOwnedSlice(),
-                .allocator = allocator,
-                .is_last = root.Object.getEntry("_next") == null,
-                .is_first = root.Object.getEntry("_prev") == null,
-            };
-        }
-
-        return error.InvalidJson;
-    }
-
-    pub fn printComments(self: Self, start_index: usize, end_index: usize) !void {
-        var i = start_index;
-        while (i < end_index) : (i += 1) {
-            const offset = self.offsets[i] + g_chat_time_correction;
-            const comment = self.comments[i];
-
-            const hours = @floatToInt(u32, offset / (60 * 60));
-            const minutes = @floatToInt(
-                u32,
-                (offset - @intToFloat(f64, hours * 60 * 60)) / 60,
-            );
-
-            const seconds = @floatToInt(
-                u32,
-                (offset - @intToFloat(f64, hours * 60 * 60) - @intToFloat(f64, minutes * 60)),
-            );
-
-            const stdout = std.io.getStdOut().outStream();
-
-            const esc_char = [_]u8{27};
-            const BOLD = esc_char ++ "[1m";
-            const RESET = esc_char ++ "[0m";
-            var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
-            const b = try fmt.bufPrint(buf[0..], "[{d}:{d:0<2}:{d:0<2}] " ++ BOLD ++ "{}" ++ RESET ++ ":\n{}\n", .{ hours, minutes, seconds, comment.name, comment.body });
-            try stdout.writeAll(b);
-        }
-    }
-
-    pub fn deinit(self: Self) void {
-        for (self.comments) |comment| {
-            self.allocator.free(comment.body);
-        }
-        self.allocator.free(self.offsets);
-        self.allocator.free(self.comments);
-    }
 };
 
 pub fn main() anyerror!void {
@@ -149,13 +31,13 @@ pub fn main() anyerror!void {
 
     var arg_it = std.process.args();
     _ = arg_it.skip();
-    var arg = arg_it.nextPosix();
-    if (arg) |value| {
-        g_chat_time_correction = fmt.parseFloat(f64, value) catch {
-            warn("Failed to parse float value.\n", .{});
-            return;
-        };
-    }
+    const chat_offset_correction = blk: {
+        if (arg_it.nextPosix()) |value| {
+            break :blk try fmt.parseFloat(f64, value);
+        }
+        warn("Failed to parse float value.\n", .{});
+        break :blk 0.0;
+    };
 
     warn("==> Connect to MPV socket\n", .{});
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
@@ -173,15 +55,16 @@ pub fn main() anyerror!void {
 
     warn("==> Download comments\n", .{});
     var corrected_time = blk: {
-        const time = mpv.video_time - g_chat_time_correction;
+        const time = mpv.video_time - chat_offset_correction;
         if (time < 0) break :blk 0.0;
         break :blk time;
     };
     const comments_json = try twitch.requestCommentsJson(corrected_time);
     defer twitch.allocator.free(comments_json);
     // const comments_json = @embedFile("../test/skadoodle-chat.json");
-    var comments = try Comments.initTwitchJson(allocator, comments_json);
+    var comments = try Comments.init(allocator, comments_json, chat_offset_correction);
     defer comments.deinit();
+    const stdout = std.io.getStdOut().outStream();
 
     while (true) {
         try mpv.requestProperty("playback-time");
@@ -189,26 +72,13 @@ pub fn main() anyerror!void {
 
         // warn("pos: {d}\n", .{mpv.video_time});
         corrected_time = blk: {
-            const time = mpv.video_time - g_chat_time_correction;
+            const time = mpv.video_time - chat_offset_correction;
             if (time < 0) break :blk 0.0;
             break :blk time;
         };
 
-        const new_index = blk: {
-            for (comments.offsets[comments.next_index..]) |offset, i| {
-                // warn("{d} > {d}\n", .{ mpv.video_time, offset });
-                if (corrected_time > offset) {
-                    continue;
-                }
-                break :blk i + comments.next_index;
-            }
-
-            break :blk comments.offsets.len;
-        };
-
-        if (new_index != comments.next_index) {
-            try comments.printComments(comments.next_index, new_index);
-            comments.next_index = new_index;
+        while (try comments.generateComment(corrected_time)) |str| {
+            try stdout.writeAll(str);
         }
 
         const first_offset = comments.offsets[0];
@@ -217,32 +87,11 @@ pub fn main() anyerror!void {
             (!comments.is_last and corrected_time > last_offset))
         {
             warn("==> Download new comments\n", .{});
-            const old_end = comments.offsets[comments.offsets.len - 1];
-
-            comments.deinit();
             const new_json = try twitch.requestCommentsJson(corrected_time);
-            comments = try Comments.initTwitchJson(allocator, new_json);
+            comments.deinit();
+            try comments.parse(new_json);
 
-            const new_start = comments.offsets[0];
-            const new_end = comments.offsets[comments.offsets.len - 1];
-
-            if (new_start > old_end and old_end < new_end) {
-                for (comments.offsets) |offset, i| {
-                    if (new_end < offset) {
-                        continue;
-                    }
-                    comments.next_index = i;
-                    break;
-                }
-            } else {
-                for (comments.offsets) |offset, i| {
-                    if (corrected_time > offset) {
-                        continue;
-                    }
-                    comments.next_index = i;
-                    break;
-                }
-            }
+            comments.skipToNextIndex(corrected_time);
 
             continue;
         }
