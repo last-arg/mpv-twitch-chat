@@ -97,7 +97,7 @@ pub const Mpv = struct {
                 }
                 continue;
             } else |err| {
-                warn("MPV Data Error: {}\n", .{err});
+                // warn("MPV Data Error: {}\n", .{err});
             }
 
             var stream_event = std.json.TokenStream.init(json_str);

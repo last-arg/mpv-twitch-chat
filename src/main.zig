@@ -18,19 +18,14 @@ const Comments = @import("comments.zig").Comments;
 // https://groups.google.com/forum/#!msg/mailing.openssl.users/nJRF_JVnPkc/377tgaE4sRgJ
 // pub const io_mode = .evented;
 
-const Context = struct {
-    buf: []const u8,
-    count: usize = 0,
-    index: usize = 0,
-};
-
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
+    const stdout = std.io.getStdOut().outStream();
 
     var arg_it = std.process.args();
     _ = arg_it.skip();
-    const chat_offset_correction = blk: {
+    const chat_offset = blk: {
         if (arg_it.nextPosix()) |value| {
             break :blk try fmt.parseFloat(f64, value);
         }
@@ -43,8 +38,8 @@ pub fn main() anyerror!void {
     defer mpv.deinit();
 
     // Get twitch video ID.
-    const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-    // const url = mpv.video_path;
+    // const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+    const url = mpv.video_path;
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1; // NOTE: need the pos after '/'.
     const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
 
@@ -53,44 +48,34 @@ pub fn main() anyerror!void {
     // warn("{}\n", .{twitch});
 
     warn("==> Download comments\n", .{});
-    var corrected_time = blk: {
-        const time = mpv.video_time - chat_offset_correction;
-        if (time < 0) break :blk 0.0;
-        break :blk time;
-    };
-    const comments_json = try twitch.requestCommentsJson(corrected_time);
+    var chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+    const comments_json = try twitch.requestCommentsJson(chat_time);
     defer twitch.allocator.free(comments_json);
     // const comments_json = @embedFile("../test/skadoodle-chat.json");
-    var comments = try Comments.init(allocator, comments_json, chat_offset_correction);
+    var comments = try Comments.init(allocator, comments_json, chat_offset);
     defer comments.deinit();
-    const stdout = std.io.getStdOut().outStream();
 
     while (true) {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
 
-        // warn("pos: {d}\n", .{mpv.video_time});
-        corrected_time = blk: {
-            const time = mpv.video_time - chat_offset_correction;
-            if (time < 0) break :blk 0.0;
-            break :blk time;
-        };
-
-        while (try comments.generateComment(corrected_time)) |str| {
+        chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+        while (try comments.generateComment(chat_time)) |str| {
             try stdout.writeAll(str);
         }
 
-        const first_offset = comments.offsets[0];
-        const last_offset = comments.offsets[comments.offsets.len - 1];
-        if ((!comments.is_first and corrected_time < first_offset) or
-            (!comments.is_last and corrected_time > last_offset))
+        const first_offset = comments.offsets[0] - chat_offset;
+        const last_offset = comments.offsets[comments.offsets.len - 1] - chat_offset;
+        if ((!comments.is_first and mpv.video_time < first_offset) or
+            (!comments.is_last and mpv.video_time > last_offset))
         {
+            chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
             warn("==> Download new comments\n", .{});
-            const new_json = try twitch.requestCommentsJson(corrected_time);
+            const new_json = try twitch.requestCommentsJson(chat_time);
             comments.deinit();
             try comments.parse(new_json);
 
-            comments.skipToNextIndex(corrected_time);
+            comments.skipToNextIndex(chat_time);
 
             continue;
         }
@@ -98,6 +83,12 @@ pub fn main() anyerror!void {
         std.time.sleep(std.time.ns_per_s * 0.5);
     }
 }
+
+const Context = struct {
+    buf: []const u8,
+    count: usize = 0,
+    index: usize = 0,
+};
 
 const Twitch = struct {
     const Self = @This();
