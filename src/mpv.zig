@@ -70,9 +70,8 @@ pub const Mpv = struct {
 
         const json_objs = mem.trimRight(u8, buf[0..bytes], "\r\n");
         var json_obj = mem.split(json_objs, "\n");
-        var it = json_obj.next();
 
-        while (it) |json_str| : (it = json_obj.next()) {
+        while (json_obj.next()) |json_str| {
             var stream = std.json.TokenStream.init(json_str);
 
             if (std.json.parse(Mpv.Data, &stream, .{ .allocator = self.allocator })) |resp| {
