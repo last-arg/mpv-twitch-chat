@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const warn = std.debug.warn;
 const assert = std.debug.assert;
 const c = @import("c.zig");
 const fmt = std.fmt;
@@ -25,23 +26,23 @@ pub const Twitch = struct {
 
     pub fn requestCommentsJson(self: Self, video_offset: f64) ![]const u8 {
         assert(video_offset >= 0.0);
-        const location = try std.fmt.allocPrint(self.allocator, "/v5/videos/{}/comments?content_offset_seconds={d:.2}", .{ self.video_id, video_offset });
-        defer self.allocator.free(location);
-        const request_line = try std.fmt.allocPrint(self.allocator, "GET {} HTTP/1.1", .{location});
-        defer self.allocator.free(request_line);
 
         // TODO: change accept to twitch+json
-        const header_entries =
+        const header =
+            \\GET /v5/videos/{}/comments?content_offset_seconds={d:.2} HTTP/1.1
             \\Accept: */*
             \\Connection: close
             \\Host: api.twitch.tv
             \\Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp
             \\
+            \\
         ;
 
-        const headers_str = try std.fmt.allocPrint(self.allocator, "{}\r\n{}\r\n", .{ request_line, header_entries });
-        defer self.allocator.free(headers_str);
-        // warn("{}\n", .{headers_str});
+        var buf: [256]u8 = undefined;
+        const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
+
+        warn("{}\n", .{header_str.len});
+        warn("{}\n", .{header_str});
 
         // define SSL_library_init() OPENSSL_init_ssl(0, NULL)
         // Return: always 1
@@ -74,19 +75,19 @@ pub const Twitch = struct {
 
         try c.sslConnect(ssl);
 
-        const write_success = c.SSL_write(ssl, @ptrCast(*const c_void, headers_str), @intCast(c_int, headers_str.len));
+        const write_success = c.SSL_write(ssl, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
         if (write_success <= 0) {
             return error.SSLWrite;
         }
 
         // warn("=================\n", .{});
-        var buf: [1024 * 100]u8 = undefined;
+        var buf_ssl: [1024 * 100]u8 = undefined;
 
-        var first_bytes = try c.sslRead(ssl, host_socket.handle, &buf);
+        var first_bytes = try c.sslRead(ssl, host_socket.handle, &buf_ssl);
 
         // Parse header
         var context = Context{
-            .buf = buf[0..@intCast(usize, first_bytes)],
+            .buf = buf_ssl[0..@intCast(usize, first_bytes)],
             .count = @intCast(usize, first_bytes),
             .index = 0,
         };
@@ -263,5 +264,25 @@ fn expect(ctx: *Context, char: u8) !void {
         ctx.index += 1;
     } else {
         return error.InvalidChar;
+    }
+}
+
+pub fn urlToVideoId(url: []const u8) ![]const u8 {
+    const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
+    const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
+
+    return url[start_index..end_index];
+}
+
+test "urlToVideoId" {
+    {
+        const url = "https://www.twitch.tv/videos/762169747";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
+    }
+    {
+        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
     }
 }

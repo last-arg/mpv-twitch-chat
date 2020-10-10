@@ -3,7 +3,8 @@ const warn = std.debug.warn;
 const fmt = std.fmt;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
-const Twitch = @import("twitch.zig").Twitch;
+const t = @import("twitch.zig");
+const Twitch = t.Twitch;
 
 // TODO: non-blocking mode messes up openssl functions.
 // https://stackoverflow.com/a/31174268
@@ -30,7 +31,7 @@ pub fn main() anyerror!void {
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
     defer mpv.deinit();
 
-    // const video_id = try urlToVideoId(mpv.video_path);
+    // const video_id = try t.urlToVideoId(mpv.video_path);
     const video_id = "762169747";
 
     const twitch = Twitch.init(allocator, video_id);
@@ -71,25 +72,5 @@ pub fn main() anyerror!void {
         }
 
         std.time.sleep(std.time.ns_per_s * 0.5);
-    }
-}
-
-fn urlToVideoId(url: []const u8) ![]const u8 {
-    const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
-    const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
-
-    return url[start_index..end_index];
-}
-
-test "urlToVideoId" {
-    {
-        const url = "https://www.twitch.tv/videos/762169747";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
-    }
-    {
-        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
     }
 }
