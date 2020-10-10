@@ -29,7 +29,7 @@ pub fn main() anyerror!void {
         if (arg_it.nextPosix()) |value| {
             break :blk try fmt.parseFloat(f64, value);
         }
-        warn("Failed to parse float value.\n", .{});
+        warn("No CLI arguments.\n", .{});
         break :blk 0.0;
     };
 
@@ -37,13 +37,10 @@ pub fn main() anyerror!void {
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
     defer mpv.deinit();
 
-    // Get twitch video ID.
-    // const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-    const url = mpv.video_path;
-    const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1; // NOTE: need the pos after '/'.
-    const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
+    // const video_id = try urlToVideoId(mpv.video_path);
+    const video_id = "762169747";
 
-    const twitch = try Twitch.init(allocator, url[start_index..end_index]);
+    const twitch = Twitch.init(allocator, video_id);
     // defer twitch.deinit();
     // warn("{}\n", .{twitch});
 
@@ -60,7 +57,7 @@ pub fn main() anyerror!void {
         try mpv.readResponses();
 
         chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
-        while (try comments.generateComment(chat_time)) |str| {
+        while (try comments.nextCommentString(chat_time)) |str| {
             try stdout.writeAll(str);
         }
 
@@ -98,7 +95,7 @@ const Twitch = struct {
     allocator: *Allocator,
     video_id: []const u8,
 
-    pub fn init(allocator: *Allocator, video_id: []const u8) !Self {
+    pub fn init(allocator: *Allocator, video_id: []const u8) Self {
         return Self{
             .allocator = allocator,
             .video_id = video_id,
@@ -339,5 +336,25 @@ fn expect(ctx: *Context, char: u8) !void {
         ctx.index += 1;
     } else {
         return error.InvalidChar;
+    }
+}
+
+fn urlToVideoId(url: []const u8) ![]const u8 {
+    const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
+    const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
+
+    return url[start_index..end_index];
+}
+
+test "urlToVideoId" {
+    {
+        const url = "https://www.twitch.tv/videos/762169747";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
+    }
+    {
+        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
     }
 }

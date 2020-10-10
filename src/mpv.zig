@@ -79,6 +79,7 @@ pub const Mpv = struct {
 
                 if (!mem.eql(u8, "success", resp.@"error")) {
                     warn("WARN: Mpv json field error isn't success\n", .{});
+                    continue;
                 }
 
                 if (resp.data) |data| {

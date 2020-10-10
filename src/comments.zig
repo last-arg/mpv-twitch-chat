@@ -114,7 +114,7 @@ pub const Comments = struct {
         }
     }
 
-    pub fn generateComment(self: *Self, time: f64) !?[]u8 {
+    pub fn nextCommentString(self: *Self, time: f64) !?[]u8 {
         if (self.next_index >= self.offsets.len) return null;
         if (self.offsets[self.next_index] > time) return null;
 
