@@ -41,8 +41,8 @@ pub const Twitch = struct {
         var buf: [256]u8 = undefined;
         const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
 
-        warn("{}\n", .{header_str.len});
-        warn("{}\n", .{header_str});
+        // warn("{}\n", .{header_str.len});
+        // warn("{}\n", .{header_str});
 
         // define SSL_library_init() OPENSSL_init_ssl(0, NULL)
         // Return: always 1
