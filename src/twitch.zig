@@ -7,20 +7,20 @@ const fmt = std.fmt;
 const StringArrayHashMap = std.StringArrayHashMap;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
-const net = std.net;
+const SSL = @import("ssl.zig").SSL;
 
 pub const Twitch = struct {
     const Self = @This();
-    const domain = "www.twitch.tv";
-    const port = 443;
-
     allocator: *Allocator,
     video_id: []const u8,
+    ssl: SSL,
 
-    pub fn init(allocator: *Allocator, video_id: []const u8) Self {
+    pub fn init(allocator: *Allocator, video_id: []const u8, ssl: SSL) Self {
+        // TODO: create ssl connection
         return Self{
             .allocator = allocator,
             .video_id = video_id,
+            .ssl = ssl,
         };
     }
 
@@ -41,41 +41,16 @@ pub const Twitch = struct {
         var buf: [256]u8 = undefined;
         const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
 
-        // warn("{}\n", .{header_str.len});
-        // warn("{}\n", .{header_str});
+        // const ssl = try SSL.init(self.allocator);
+        // try ssl.connect();
 
-        // define SSL_library_init() OPENSSL_init_ssl(0, NULL)
-        // Return: always 1
-        const lib_init = c.OPENSSL_init_ssl(0, null);
+        var ssl = self.ssl;
+        try ssl.connect();
 
-        // define SSL_load_error_strings()  OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL)
-        // Return: no value
-        _ = c.OPENSSL_init_ssl(c.OPENSSL_INIT_LOAD_SSL_STRINGS | c.OPENSSL_INIT_LOAD_CRYPTO_STRINGS, null);
+        var ssl_ptr = ssl.ssl;
+        var host_socket = ssl.socket;
 
-        // define OpenSSL_add_all_algorithms() OPENSSL_add_all_algorithms_noconf()
-        // define OPENSSL_add_all_algorithms_noconf() OPENSSL_init_crypto(OPENSSL_INIT_ADD_ALL_CIPHERS | OPENSSL_INIT_ADD_ALL_DIGESTS, NULL)
-        // Return: nothing
-        _ = c.OPENSSL_init_crypto(c.OPENSSL_INIT_ADD_ALL_CIPHERS | c.OPENSSL_INIT_ADD_ALL_DIGESTS, null);
-
-        const method = c.TLSv1_2_client_method() orelse return error.TLSClientMethod;
-
-        const ctx = c.SSL_CTX_new(method) orelse return error.SSLContextNew;
-        defer c.SSL_CTX_free(ctx);
-
-        const ssl = c.SSL_new(ctx) orelse return error.SSLNew;
-        defer c.SSL_free(ssl);
-
-        const host_socket = try net.tcpConnectToHost(self.allocator, domain, port);
-        defer host_socket.close();
-
-        const set_fd = c.SSL_set_fd(ssl, host_socket.handle);
-        if (set_fd == 0) {
-            return error.SetSSLFileDescriptor;
-        }
-
-        try c.sslConnect(ssl);
-
-        const write_success = c.SSL_write(ssl, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
+        const write_success = c.SSL_write(ssl_ptr, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
         if (write_success <= 0) {
             return error.SSLWrite;
         }
@@ -83,7 +58,8 @@ pub const Twitch = struct {
         // warn("=================\n", .{});
         var buf_ssl: [1024 * 100]u8 = undefined;
 
-        var first_bytes = try c.sslRead(ssl, host_socket.handle, &buf_ssl);
+        var first_bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf_ssl);
+        // warn("{}\n", .{buf_ssl[0..first_bytes]});
 
         // Parse header
         var context = Context{
@@ -189,7 +165,7 @@ pub const Twitch = struct {
 
         var body = ArrayList(u8).init(self.allocator);
         while (true) {
-            const bytes = try c.sslRead(ssl, host_socket.handle, &buf);
+            const bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf);
             const chunk_part = buf[0..bytes];
             // warn("{}\n", .{chunk_part});
 
@@ -211,7 +187,7 @@ pub const Twitch = struct {
                 const chunk_length = try fmt.parseUnsigned(u32, chunk_part[0..index], 16);
                 var chunk_count: u32 = 0;
                 while (true) {
-                    const chunk_bytes = try c.sslRead(ssl, host_socket.handle, &buf);
+                    const chunk_bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf);
 
                     // TODO: allocate chunk parts
                     const chunk_buf = buf[0..chunk_bytes];
@@ -274,15 +250,27 @@ pub fn urlToVideoId(url: []const u8) ![]const u8 {
     return url[start_index..end_index];
 }
 
-test "urlToVideoId" {
-    {
-        const url = "https://www.twitch.tv/videos/762169747";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
-    }
-    {
-        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
-    }
+// test "urlToVideoId" {
+//     {
+//         const url = "https://www.twitch.tv/videos/762169747";
+//         const result = try urlToVideoId(url);
+//         std.testing.expect(mem.eql(u8, result, "762169747"));
+//     }
+//     {
+//         const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+//         const result = try urlToVideoId(url);
+//         std.testing.expect(mem.eql(u8, result, "762169747"));
+//     }
+// }
+
+test "download" {
+    const video_id = "762169747";
+    const allocator = std.testing.allocator;
+    const ssl = try SSL.init(allocator);
+    defer ssl.deinit();
+    const twitch = Twitch.init(allocator, video_id, ssl);
+    const r1 = try twitch.requestCommentsJson(1.0);
+    allocator.free(r1);
+    const r2 = try twitch.requestCommentsJson(1.0);
+    allocator.free(r2);
 }

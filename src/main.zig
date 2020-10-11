@@ -5,6 +5,7 @@ const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
 const t = @import("twitch.zig");
 const Twitch = t.Twitch;
+const SSL = t.SSL;
 
 // TODO: non-blocking mode messes up openssl functions.
 // https://stackoverflow.com/a/31174268
@@ -34,7 +35,9 @@ pub fn main() anyerror!void {
     // const video_id = try t.urlToVideoId(mpv.video_path);
     const video_id = "762169747";
 
-    const twitch = Twitch.init(allocator, video_id);
+    const ssl = try SSL.init(allocator);
+    defer ssl.deinit();
+    const twitch = Twitch.init(allocator, video_id, ssl);
     // defer twitch.deinit();
     // warn("{}\n", .{twitch});
 

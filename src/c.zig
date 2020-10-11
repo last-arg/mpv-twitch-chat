@@ -5,6 +5,12 @@ const io = std.io;
 const os = std.os;
 const Mode = io.Mode;
 
+const c = @cImport({
+    @cInclude("openssl/ssl.h");
+    @cInclude("openssl/bio.h");
+    @cInclude("openssl/err.h");
+});
+
 pub usingnamespace @cImport({
     @cInclude("openssl/ssl.h");
     @cInclude("openssl/bio.h");
@@ -20,15 +26,19 @@ else
 
 pub fn sslRead(ssl: *SSL, sockfd: os.fd_t, buf: []u8) !usize {
     const len = @intCast(c_int, buf.len);
-    const first_bytes = SSL_read(ssl, @ptrCast(*c_void, buf), len);
-    if (first_bytes <= 0) return error.SSLRead;
-    return @intCast(usize, first_bytes);
+    const bytes = SSL_read(ssl, @ptrCast(*c_void, buf), len);
+    if (bytes <= 0) {
+        warn("SSL ERROR: {d}\n", .{SSL_get_error(ssl, bytes)});
+        return error.SSLRead;
+    }
+    return @intCast(usize, bytes);
 }
 
 pub fn sslConnect(ssl: *SSL) !void {
     const ssl_fd = SSL_connect(ssl);
 
     if (ssl_fd != 1) {
+        warn("SSL ERROR: {d}\n", .{SSL_get_error(ssl, ssl_fd)});
         return error.SSLConnect;
     }
 }

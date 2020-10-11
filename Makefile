@@ -11,4 +11,4 @@ test-comments:
 	echo "src/comments.zig" | entr -c -r zig test src/comments.zig
 
 test-twitch:
-	echo "src/twitch.zig" | entr -c -r zig test src/twitch.zig	
+	ls src/*.zig | entr -c -r zig test src/twitch.zig $$NIX_CFLAGS_COMPILE $$NIX_LDFLAGS -lc -lssl -lcrypto
