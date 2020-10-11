@@ -50,79 +50,78 @@ pub const Twitch = struct {
         const write_success = try ssl.write(header_str);
 
         // warn("=================\n", .{});
-        var buf_ssl: [1024 * 10]u8 = undefined;
+        var buf_ssl: [1024 * 16]u8 = undefined;
 
         var first_bytes = try ssl.read(&buf_ssl);
         // warn("{}\n", .{buf_ssl[0..first_bytes]});
 
         // Parse header
-        var context = Context{
+        var ctx = Context{
             .buf = buf_ssl[0..@intCast(usize, first_bytes)],
-            .count = @intCast(usize, first_bytes),
             .index = 0,
         };
 
-        // warn("{}\n", .{context.buf});
+        // warn("{}\n", .{ctx.buf});
 
-        var cur = context.index;
+        var cur = ctx.index;
 
-        if (!seek(&context, ' ')) return error.NoVersion;
+        if (!ctx.seek(' ')) return error.NoVersion;
 
-        const version = context.buf[cur .. context.index - 1];
+        const version = ctx.buf[cur .. ctx.index - 1];
         // warn("{}|\n", .{version});
 
-        cur = context.index;
-        if (!seek(&context, ' ')) return error.NoStatusCode;
-        const status_code = context.buf[cur .. context.index - 1];
+        cur = ctx.index;
+        if (!ctx.seek(' ')) return error.NoStatusCode;
+        const status_code = ctx.buf[cur .. ctx.index - 1];
         // warn("{}|\n", .{status_code});
 
         if (!mem.eql(u8, status_code, "200")) return error.StatusCodeNot200;
 
-        cur = context.index;
-        if (!seek(&context, '\r')) return error.NoStatusMessage;
-        const status_msg = context.buf[cur .. context.index - 1];
+        cur = ctx.index;
+        if (!ctx.seek('\r')) return error.NoStatusMessage;
+        const status_msg = ctx.buf[cur .. ctx.index - 1];
         // warn("{}|\n", .{status_msg});
 
-        try expect(&context, '\n');
+        try ctx.expect('\n');
 
         const Headers = StringArrayHashMap([]const u8);
         // Parse header fields
         var h = Headers.init(self.allocator);
         defer h.deinit();
-        cur = context.index;
-        while (context.buf[cur] != '\r') {
-            if (!seek(&context, ':')) {
+        cur = ctx.index;
+        while (ctx.buf[cur] != '\r') {
+            if (!ctx.seek(':')) {
                 return error.NoName;
             }
 
             // TODO?: Need to trim name?
-            const name = context.buf[cur .. context.index - 1];
-            cur = context.index;
+            const name = ctx.buf[cur .. ctx.index - 1];
+            cur = ctx.index;
 
-            if (!seek(&context, '\r')) {
+            if (!ctx.seek('\r')) {
                 return error.NoValue;
             }
-            try expect(&context, '\n');
+            try ctx.expect('\n');
 
-            switch (context.buf[context.index]) {
+            switch (ctx.buf[ctx.index]) {
                 '\t', ' ' => {
-                    if (!seek(&context, '\r')) {
+                    if (!ctx.seek('\r')) {
                         return error.InvalidObsFold;
                     }
-                    try expect(&context, '\n');
+                    try ctx.expect('\n');
                 },
                 else => {},
             }
 
-            const value = mem.trim(u8, context.buf[cur .. context.index - 2], " ");
-            cur = context.index;
+            const value = mem.trim(u8, ctx.buf[cur .. ctx.index - 2], " ");
+            cur = ctx.index;
             try h.put(name, value);
         }
 
-        try expect(&context, '\r');
-        try expect(&context, '\n');
+        try ctx.expect('\r');
+        try ctx.expect('\n');
 
-        { // Check header fields 'transfer_encoding', 'Content-Type'
+        { // Check header fields 'transfer-encoding', 'Content-Type'
             var is_error = true;
             const search_value_1 = "chunked";
             for (h.items()) |e| {
@@ -152,9 +151,9 @@ pub const Twitch = struct {
             if (is_error) return error.WrongContentType;
         }
 
-        // warn("index: {} | count: {}\n", .{ context.index, context.count });
-        if (context.count > context.index) {
-            // TODO: first read contains some body also
+        // warn("index: {} | count: {}\n", .{ ctx.index, ctx.count });
+        if (ctx.buf.len > ctx.index) {
+            @panic("TODO: first read contains also body");
         }
 
         var body = ArrayList(u8).init(self.allocator);
@@ -206,31 +205,31 @@ pub const Twitch = struct {
 };
 
 const Context = struct {
+    const Self = @This();
     buf: []const u8,
-    count: usize = 0,
     index: usize = 0,
-};
 
-fn seek(ctx: *Context, char: u8) bool {
-    while (true) : (ctx.index += 1) {
-        if (ctx.index >= ctx.count) {
-            return false;
-        } else if (ctx.buf[ctx.index] == char) {
-            ctx.index += 1;
-            return true;
+    pub fn seek(self: *Self, char: u8) bool {
+        while (true) : (self.index += 1) {
+            if (self.index >= self.buf.len) {
+                return false;
+            } else if (self.buf[self.index] == char) {
+                self.index += 1;
+                return true;
+            }
         }
     }
-}
 
-fn expect(ctx: *Context, char: u8) !void {
-    if (ctx.count <= ctx.index) {
-        return error.UnexpectedEof;
-    } else if (ctx.buf[ctx.index] == char) {
-        ctx.index += 1;
-    } else {
-        return error.InvalidChar;
+    pub fn expect(self: *Self, char: u8) !void {
+        if (self.buf.len <= self.index) {
+            return error.UnexpectedEof;
+        } else if (self.buf[self.index] == char) {
+            self.index += 1;
+        } else {
+            return error.InvalidChar;
+        }
     }
-}
+};
 
 pub fn urlToVideoId(url: []const u8) ![]const u8 {
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
