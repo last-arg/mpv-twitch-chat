@@ -30,7 +30,6 @@ pub const Twitch = struct {
         var ssl = self.ssl;
         try ssl.connect();
         defer ssl.connectionCleanup();
-        var ssl_ptr = ssl.ssl.?;
 
         // TODO: change accept to twitch+json
         // TODO?: Connection: open ???
@@ -49,12 +48,9 @@ pub const Twitch = struct {
         const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
 
         const write_success = try ssl.write(header_str);
-        if (write_success <= 0) {
-            return error.SSLWrite;
-        }
 
         // warn("=================\n", .{});
-        var buf_ssl: [1024 * 100]u8 = undefined;
+        var buf_ssl: [1024 * 10]u8 = undefined;
 
         var first_bytes = try ssl.read(&buf_ssl);
         // warn("{}\n", .{buf_ssl[0..first_bytes]});
@@ -163,8 +159,8 @@ pub const Twitch = struct {
 
         var body = ArrayList(u8).init(self.allocator);
         while (true) {
-            const bytes = try ssl.read(&buf);
-            const chunk_part = buf[0..bytes];
+            const bytes = try ssl.read(&buf_ssl);
+            const chunk_part = buf_ssl[0..bytes];
             // warn("{}\n", .{chunk_part});
 
             // TODO: not the best solution
@@ -185,10 +181,10 @@ pub const Twitch = struct {
                 const chunk_length = try fmt.parseUnsigned(u32, chunk_part[0..index], 16);
                 var chunk_count: u32 = 0;
                 while (true) {
-                    const chunk_bytes = try ssl.read(&buf);
+                    const chunk_bytes = try ssl.read(&buf_ssl);
 
                     // TODO: allocate chunk parts
-                    const chunk_buf = buf[0..chunk_bytes];
+                    const chunk_buf = buf_ssl[0..chunk_bytes];
                     try body.appendSlice(chunk_buf);
                     // warn("{}", .{chunk_buf});
                     chunk_count += @intCast(u32, chunk_bytes);
@@ -207,11 +203,6 @@ pub const Twitch = struct {
 
         return body.toOwnedSlice();
     }
-
-    // pub fn deinit(self: Self) void {
-    //     os.close(self.fd);
-    // c.SSL_free(self.ssl);
-    // }
 };
 
 const Context = struct {
