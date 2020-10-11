@@ -29,7 +29,7 @@ pub const Twitch = struct {
 
         var ssl = self.ssl;
         try ssl.connect();
-        defer ssl.connectionCleanup();
+        defer ssl.connectCleanup();
 
         // TODO: change accept to twitch+json
         // TODO?: Connection: open ???

@@ -79,7 +79,7 @@ pub const SSL = struct {
         self.ssl = ssl;
     }
 
-    pub fn connectionCleanup(self: Self) void {
+    pub fn connectCleanup(self: Self) void {
         if (self.ssl) |ssl| {
             _ = c.SSL_shutdown(ssl);
             c.SSL_free(ssl);
@@ -110,7 +110,7 @@ pub const SSL = struct {
 
     pub fn deinit(self: Self) void {
         if (self.session) |sess| c.SSL_SESSION_free(sess);
-        self.connectionCleanup();
+        self.connectCleanup();
         c.SSL_CTX_free(self.ctx);
     }
 };
