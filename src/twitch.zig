@@ -28,6 +28,7 @@ pub const Twitch = struct {
         assert(video_offset >= 0.0);
 
         // TODO: change accept to twitch+json
+        // TODO?: Connection: open ???
         const header =
             \\GET /v5/videos/{}/comments?content_offset_seconds={d:.2} HTTP/1.1
             \\Accept: */*
@@ -41,14 +42,11 @@ pub const Twitch = struct {
         var buf: [256]u8 = undefined;
         const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
 
-        // const ssl = try SSL.init(self.allocator);
-        // try ssl.connect();
-
         var ssl = self.ssl;
         try ssl.connect();
-
-        var ssl_ptr = ssl.ssl;
-        var host_socket = ssl.socket;
+        defer ssl.connectionCleanup();
+        var ssl_ptr = ssl.ssl.?;
+        var host_socket = ssl.socket.?;
 
         const write_success = c.SSL_write(ssl_ptr, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
         if (write_success <= 0) {
@@ -250,18 +248,18 @@ pub fn urlToVideoId(url: []const u8) ![]const u8 {
     return url[start_index..end_index];
 }
 
-// test "urlToVideoId" {
-//     {
-//         const url = "https://www.twitch.tv/videos/762169747";
-//         const result = try urlToVideoId(url);
-//         std.testing.expect(mem.eql(u8, result, "762169747"));
-//     }
-//     {
-//         const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-//         const result = try urlToVideoId(url);
-//         std.testing.expect(mem.eql(u8, result, "762169747"));
-//     }
-// }
+test "urlToVideoId" {
+    {
+        const url = "https://www.twitch.tv/videos/762169747";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
+    }
+    {
+        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
+        const result = try urlToVideoId(url);
+        std.testing.expect(mem.eql(u8, result, "762169747"));
+    }
+}
 
 test "download" {
     const video_id = "762169747";

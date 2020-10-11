@@ -4,8 +4,8 @@ const fmt = std.fmt;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
 const t = @import("twitch.zig");
+const SSL = @import("ssl.zig").SSL;
 const Twitch = t.Twitch;
-const SSL = t.SSL;
 
 // TODO: non-blocking mode messes up openssl functions.
 // https://stackoverflow.com/a/31174268

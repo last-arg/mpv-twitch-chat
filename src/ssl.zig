@@ -1,4 +1,5 @@
 const std = @import("std");
+const warn = std.debug.warn;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
 const net = std.net;
@@ -15,10 +16,10 @@ pub const SSL = struct {
     const domain = "www.twitch.tv";
     const port = 443;
 
-    ssl: *c.SSL,
-    session: ?*c.SSL_SESSION,
+    ssl: ?*c.SSL = null,
+    session: ?*c.SSL_SESSION = null,
     ctx: *c.SSL_CTX,
-    socket: fs.File,
+    socket: ?fs.File = null,
     allocator: *Allocator,
 
     pub fn init(allocator: *Allocator) !SSL {
@@ -41,42 +42,13 @@ pub const SSL = struct {
         const ctx = c.SSL_CTX_new(method) orelse return error.SSLContextNew;
         errdefer c.SSL_CTX_free(ctx);
 
-        const socket = try net.tcpConnectToHost(allocator, domain, port);
-        errdefer socket.close();
-
-        var ssl = c.SSL_new(ctx) orelse return error.SSLNew;
-        errdefer c.SSL_free(ssl);
-
-        const set_fd = c.SSL_set_fd(ssl, socket.handle);
-        if (set_fd == 0) {
-            return error.SetSSLFileDescriptor;
-        }
-
-        try c.sslConnect(ssl);
-
-        const session = c.SSL_get1_session(ssl) orelse {
-            return error.SSLGetSession;
-        };
-
-        _ = c.SSL_set_session(ssl, session);
-
-        _ = c.SSL_shutdown(ssl);
-
-        var result = SSL{
-            .ssl = ssl,
+        return Self{
             .ctx = ctx,
-            .socket = socket,
             .allocator = allocator,
-            .session = null,
         };
-        return result;
     }
 
     pub fn connect(self: *Self) !void {
-        _ = c.SSL_shutdown(self.ssl);
-        c.SSL_free(self.ssl);
-        self.socket.close();
-
         const ctx = self.ctx;
 
         const socket = try net.tcpConnectToHost(self.allocator, domain, port);
@@ -106,11 +78,17 @@ pub const SSL = struct {
         self.ssl = ssl;
     }
 
+    pub fn connectionCleanup(self: Self) void {
+        if (self.ssl) |ssl| {
+            _ = c.SSL_shutdown(ssl);
+            c.SSL_free(ssl);
+        }
+        if (self.socket) |socket| socket.close();
+    }
+
     pub fn deinit(self: Self) void {
-        _ = c.SSL_shutdown(self.ssl);
         if (self.session) |sess| c.SSL_SESSION_free(sess);
-        c.SSL_free(self.ssl);
-        self.socket.close();
+        self.connectionCleanup();
         c.SSL_CTX_free(self.ctx);
     }
 };
