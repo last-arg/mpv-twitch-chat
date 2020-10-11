@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const warn = std.debug.warn;
 const assert = std.debug.assert;
-const c = @import("c.zig");
 const fmt = std.fmt;
 const StringArrayHashMap = std.StringArrayHashMap;
 const ArrayList = std.ArrayList;

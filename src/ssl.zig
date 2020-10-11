@@ -9,9 +9,6 @@ const c = @import("c.zig");
 // NOTE: SSL session - http://h30266.www3.hpe.com/odl/axpos/opsys/vmsos84/BA554_90007/ch04s03.html
 // https://nachtimwald.com/2014/10/06/client-side-session-cache-in-openssl/
 
-// TODO: move openssl read and write function from c.zig
-// TODO: Remove c.zig import from twitch.zig
-
 pub const SSL = struct {
     const Self = @This();
     const domain = "www.twitch.tv";
@@ -115,7 +112,7 @@ pub const SSL = struct {
     }
 };
 
-pub fn opensslConnect(ssl: *c.SSL) !void {
+fn opensslConnect(ssl: *c.SSL) !void {
     const ssl_fd = c.SSL_connect(ssl);
 
     if (ssl_fd != 1) {
