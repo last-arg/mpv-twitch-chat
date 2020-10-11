@@ -2,7 +2,7 @@ dev:
 	ls src/* | entr -c -r zig build run
 	
 test-main:
-	echo "src/main.zig" | entr -c -r zig test src/main.zig
+	ls src/*.zig | entr -c -r zig test src/main.zig $$NIX_CFLAGS_COMPILE $$NIX_LDFLAGS -lc -lssl -lcrypto
 
 test-mpv:
 	echo "src/mpv.zig" | entr -c -r zig test src/mpv.zig
