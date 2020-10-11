@@ -3,6 +3,7 @@ const warn = std.debug.warn;
 const fs = std.fs;
 const Allocator = std.mem.Allocator;
 const net = std.net;
+const os = std.os;
 const c = @import("c.zig");
 
 // NOTE: SSL session - http://h30266.www3.hpe.com/odl/axpos/opsys/vmsos84/BA554_90007/ch04s03.html
@@ -66,7 +67,7 @@ pub const SSL = struct {
             _ = c.SSL_set_session(ssl, sess);
         }
 
-        try c.sslConnect(ssl);
+        try opensslConnect(ssl);
         errdefer _ = c.SSL_shutdown(ssl_ptr);
 
         const session = c.SSL_get1_session(ssl);
@@ -86,9 +87,39 @@ pub const SSL = struct {
         if (self.socket) |socket| socket.close();
     }
 
+    pub fn read(self: Self, buf: []u8) !usize {
+        const ssl = self.ssl orelse return error.SSLIsNull;
+        const len = @intCast(c_int, buf.len);
+        const bytes = c.SSL_read(ssl, @ptrCast(*c_void, buf), len);
+        if (bytes <= 0) {
+            warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
+            return error.SSLRead;
+        }
+        return @intCast(usize, bytes);
+    }
+
+    pub fn write(self: Self, header_str: []u8) !usize {
+        const ssl = self.ssl orelse return error.SSLIsNull;
+        const bytes = c.SSL_write(ssl, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
+        if (bytes <= 0) {
+            warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
+            return error.SSLRead;
+        }
+        return @intCast(usize, bytes);
+    }
+
     pub fn deinit(self: Self) void {
         if (self.session) |sess| c.SSL_SESSION_free(sess);
         self.connectionCleanup();
         c.SSL_CTX_free(self.ctx);
     }
 };
+
+pub fn opensslConnect(ssl: *c.SSL) !void {
+    const ssl_fd = c.SSL_connect(ssl);
+
+    if (ssl_fd != 1) {
+        warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, ssl_fd)});
+        return error.SSLConnect;
+    }
+}

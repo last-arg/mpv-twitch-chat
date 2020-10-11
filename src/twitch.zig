@@ -27,6 +27,11 @@ pub const Twitch = struct {
     pub fn requestCommentsJson(self: Self, video_offset: f64) ![]const u8 {
         assert(video_offset >= 0.0);
 
+        var ssl = self.ssl;
+        try ssl.connect();
+        defer ssl.connectionCleanup();
+        var ssl_ptr = ssl.ssl.?;
+
         // TODO: change accept to twitch+json
         // TODO?: Connection: open ???
         const header =
@@ -40,15 +45,10 @@ pub const Twitch = struct {
         ;
 
         var buf: [256]u8 = undefined;
+
         const header_str = try std.fmt.bufPrint(&buf, header, .{ self.video_id, video_offset });
 
-        var ssl = self.ssl;
-        try ssl.connect();
-        defer ssl.connectionCleanup();
-        var ssl_ptr = ssl.ssl.?;
-        var host_socket = ssl.socket.?;
-
-        const write_success = c.SSL_write(ssl_ptr, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
+        const write_success = try ssl.write(header_str);
         if (write_success <= 0) {
             return error.SSLWrite;
         }
@@ -56,7 +56,7 @@ pub const Twitch = struct {
         // warn("=================\n", .{});
         var buf_ssl: [1024 * 100]u8 = undefined;
 
-        var first_bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf_ssl);
+        var first_bytes = try ssl.read(&buf_ssl);
         // warn("{}\n", .{buf_ssl[0..first_bytes]});
 
         // Parse header
@@ -163,7 +163,7 @@ pub const Twitch = struct {
 
         var body = ArrayList(u8).init(self.allocator);
         while (true) {
-            const bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf);
+            const bytes = try ssl.read(&buf);
             const chunk_part = buf[0..bytes];
             // warn("{}\n", .{chunk_part});
 
@@ -185,7 +185,7 @@ pub const Twitch = struct {
                 const chunk_length = try fmt.parseUnsigned(u32, chunk_part[0..index], 16);
                 var chunk_count: u32 = 0;
                 while (true) {
-                    const chunk_bytes = try c.sslRead(ssl_ptr, host_socket.handle, &buf);
+                    const chunk_bytes = try ssl.read(&buf);
 
                     // TODO: allocate chunk parts
                     const chunk_buf = buf[0..chunk_bytes];
