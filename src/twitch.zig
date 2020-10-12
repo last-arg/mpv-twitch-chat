@@ -22,7 +22,7 @@ pub const Twitch = struct {
         };
     }
 
-    pub fn requestCommentsJson(self: Self, video_offset: f64) ![]const u8 {
+    pub fn downloadComments(self: Self, video_offset: f64) ![]const u8 {
         assert(video_offset >= 0.0);
 
         var ssl = self.ssl;

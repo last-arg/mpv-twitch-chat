@@ -42,7 +42,7 @@ pub fn main() anyerror!void {
     warn("==> Download comments\n", .{});
     var chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
 
-    const json_str = try twitch.requestCommentsJson(chat_time);
+    const json_str = try twitch.downloadComments(chat_time);
     // const json_str = @embedFile("../test/skadoodle-chat.json");
 
     var comments = try Comments.init(allocator, json_str, chat_offset);
@@ -105,7 +105,7 @@ const Download = struct {
 
     pub fn download(self: *Self) !void {
         self.state = .Downloading;
-        self.body = try self.twitch.requestCommentsJson(self.chat_time);
+        self.body = try self.twitch.downloadComments(self.chat_time);
         self.state = .Finished;
     }
 
