@@ -15,7 +15,6 @@ pub const Twitch = struct {
     ssl: SSL,
 
     pub fn init(allocator: *Allocator, video_id: []const u8, ssl: SSL) Self {
-        // TODO: create ssl connection
         return Self{
             .allocator = allocator,
             .video_id = video_id,
@@ -30,11 +29,9 @@ pub const Twitch = struct {
         try ssl.connect();
         defer ssl.connectCleanup();
 
-        // TODO: change accept to twitch+json
-        // TODO?: Connection: open ???
         const header =
             \\GET /v5/videos/{}/comments?content_offset_seconds={d:.2} HTTP/1.1
-            \\Accept: */*
+            \\Accept: application/vnd.twitchtv.v5+json
             \\Connection: close
             \\Host: api.twitch.tv
             \\Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp
@@ -93,7 +90,6 @@ pub const Twitch = struct {
                 return error.NoName;
             }
 
-            // TODO?: Need to trim name?
             const name = ctx.buf[cur .. ctx.index - 1];
             cur = ctx.index;
 
@@ -152,51 +148,37 @@ pub const Twitch = struct {
 
         // warn("index: {} | count: {}\n", .{ ctx.index, ctx.count });
         if (ctx.buf.len > ctx.index) {
-            @panic("TODO: first read contains also body");
+            @panic("TODO?: First ssl.read response also contains body");
         }
 
         var body = ArrayList(u8).init(self.allocator);
         while (true) {
             const bytes = try ssl.read(&buf_ssl);
+            if (bytes == 0) break;
+            if (bytes < 0) return error.ReadingChunk;
+
             const chunk_part = buf_ssl[0..bytes];
-            // warn("{}\n", .{chunk_part});
 
-            // TODO: not the best solution
-            if (mem.lastIndexOf(u8, chunk_part, "0\r\n")) |last_index| {
-                const trimmed_hex = mem.trimLeft(u8, chunk_part[0 .. last_index + 1], "\r\n");
+            if (mem.eql(u8, chunk_part, "\r\n")) continue;
+            if (mem.eql(u8, chunk_part, "0\r\n\r\n") or
+                mem.eql(u8, chunk_part, "\r\n0\r\n\r\n")) break;
 
-                if (trimmed_hex.len == 1 and trimmed_hex[0] == '0') {
-                    // warn("End of body\n", .{});
-                    break;
-                }
-            }
-            // TODO?: could limit to smaller chunk sizes?
-            if (mem.indexOfScalar(u8, chunk_part, '\r')) |index| {
-                if (index == 0) {
-                    continue;
-                }
-
-                const chunk_length = try fmt.parseUnsigned(u32, chunk_part[0..index], 16);
-                var chunk_count: u32 = 0;
+            if (mem.indexOfScalar(u8, chunk_part, '\r')) |end| {
+                var count = try fmt.parseUnsigned(u32, chunk_part[0..end], 16);
                 while (true) {
                     const chunk_bytes = try ssl.read(&buf_ssl);
 
-                    // TODO: allocate chunk parts
+                    if (chunk_bytes == 0) break;
+                    if (chunk_bytes < 0) return error.ReadingChunk;
+
                     const chunk_buf = buf_ssl[0..chunk_bytes];
                     try body.appendSlice(chunk_buf);
-                    // warn("{}", .{chunk_buf});
-                    chunk_count += @intCast(u32, chunk_bytes);
-                    if (chunk_count >= chunk_length) {
-                        break;
-                    }
 
-                    if (bytes == 0) break;
-                    if (bytes < 0) return error.ReadingBody;
+                    if (count == @intCast(u32, chunk_bytes)) break;
+                    if (count < @intCast(u32, chunk_bytes)) return error.ChunkLengthMismatch;
+                    count -= @intCast(u32, chunk_bytes);
                 }
             }
-
-            if (bytes == 0) break;
-            if (bytes < 0) return error.ReadingBody;
         }
 
         return body.toOwnedSlice();

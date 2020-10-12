@@ -6,7 +6,13 @@ const net = std.net;
 const os = std.os;
 const c = @import("c.zig");
 
-// NOTE: SSL session - http://h30266.www3.hpe.com/odl/axpos/opsys/vmsos84/BA554_90007/ch04s03.html
+// Non-blocking openssl
+// https://stackoverflow.com/a/31174268
+// SSL_pending()
+// https://groups.google.com/forum/#!msg/mailing.openssl.users/nJRF_JVnPkc/377tgaE4sRgJ
+
+// openssl examples
+// http://h30266.www3.hpe.com/odl/axpos/opsys/vmsos84/BA554_90007/ch04s03.html
 // https://nachtimwald.com/2014/10/06/client-side-session-cache-in-openssl/
 
 pub const SSL = struct {

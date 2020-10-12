@@ -16,9 +16,8 @@ pub const Comments = struct {
     allocator: *Allocator,
     next_index: usize = 0,
     chat_offset_correction: f64 = 0.0,
-    // TODO?: Make these bools into enum instead?
-    is_last: bool = false,
-    is_first: bool = false,
+    has_next: bool = false,
+    has_prev: bool = false,
 
     const Self = @This();
     const Comment = struct {
@@ -82,8 +81,8 @@ pub const Comments = struct {
             }
             self.offsets = offsets_array.toOwnedSlice();
             self.comments = comments_array.toOwnedSlice();
-            self.is_last = root.Object.getEntry("_next") == null;
-            self.is_first = root.Object.getEntry("_prev") == null;
+            self.has_next = root.Object.getEntry("_next") == null;
+            self.has_prev = root.Object.getEntry("_prev") == null;
         } else {
             return error.NoCommentsJsonField;
         }

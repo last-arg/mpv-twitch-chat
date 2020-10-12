@@ -10,12 +10,7 @@ const SSL = @import("ssl.zig").SSL;
 const Thread = std.Thread;
 const time = std.time;
 
-// pub const io_mode = .evented;
-
-// TODO: non-blocking mode messes up openssl functions.
-// https://stackoverflow.com/a/31174268
-// SSL_pending()
-// https://groups.google.com/forum/#!msg/mailing.openssl.users/nJRF_JVnPkc/377tgaE4sRgJ
+// NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
 
 pub fn main() anyerror!void {
@@ -75,8 +70,8 @@ pub fn main() anyerror!void {
         const first_offset = comments.offsets[0] - chat_offset;
         const last_offset = comments.offsets[comments.offsets.len - 1] - chat_offset;
         if (download.state == .Using and
-            ((!comments.is_first and mpv.video_time < first_offset) or
-            (!comments.is_last and mpv.video_time > last_offset)))
+            ((!comments.has_prev and mpv.video_time < first_offset) or
+            (!comments.has_next and mpv.video_time > last_offset)))
         {
             warn("==> Start download new comments\n", .{});
             download.chat_time = chat_time;
