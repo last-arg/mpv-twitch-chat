@@ -73,13 +73,9 @@ pub const Comments = struct {
                 };
 
                 var new_comment = Comment{
-                    .name = name,
-                    // .body = message_body[0..],
-                    // TODO?: might be memory leak. might require separate freeing ???
+                    .name = try mem.dupe(self.allocator, u8, name),
                     .body = try mem.dupe(self.allocator, u8, message_body),
-                    // .body = undefined,
                 };
-                // mem.copy(u8, new_comment.body, message_body[0..]);
                 try comments_array.append(new_comment);
 
                 try offsets_array.append(offset_seconds);

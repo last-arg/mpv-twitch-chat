@@ -1,11 +1,16 @@
 const std = @import("std");
 const warn = std.debug.warn;
+const assert = std.debug.assert;
 const fmt = std.fmt;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
 const t = @import("twitch.zig");
 const Twitch = t.Twitch;
 const SSL = @import("ssl.zig").SSL;
+const Thread = std.Thread;
+const time = std.time;
+
+// pub const io_mode = .evented;
 
 // TODO: non-blocking mode messes up openssl functions.
 // https://stackoverflow.com/a/31174268
@@ -37,18 +42,27 @@ pub fn main() anyerror!void {
 
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
-    const twitch = Twitch.init(allocator, video_id, ssl);
-    // defer twitch.deinit();
-    // warn("{}\n", .{twitch});
+    var twitch = Twitch.init(allocator, video_id, ssl);
 
     warn("==> Download comments\n", .{});
     var chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
-    const comments_json = try twitch.requestCommentsJson(chat_time);
-    defer twitch.allocator.free(comments_json);
-    // const comments_json = @embedFile("../test/skadoodle-chat.json");
-    var comments = try Comments.init(allocator, comments_json, chat_offset);
+
+    const json_str = try twitch.requestCommentsJson(chat_time);
+    // const json_str = @embedFile("../test/skadoodle-chat.json");
+
+    var comments = try Comments.init(allocator, json_str, chat_offset);
     defer comments.deinit();
 
+    var download = Download{
+        .twitch = twitch,
+        .chat_time = chat_time,
+        .body = json_str,
+        .state = .Using,
+    };
+    download.freeBody();
+    errdefer download.freeBody();
+
+    var th: *Thread = undefined;
     while (true) {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
@@ -60,20 +74,47 @@ pub fn main() anyerror!void {
 
         const first_offset = comments.offsets[0] - chat_offset;
         const last_offset = comments.offsets[comments.offsets.len - 1] - chat_offset;
-        if ((!comments.is_first and mpv.video_time < first_offset) or
-            (!comments.is_last and mpv.video_time > last_offset))
+        if (download.state == .Using and
+            ((!comments.is_first and mpv.video_time < first_offset) or
+            (!comments.is_last and mpv.video_time > last_offset)))
         {
-            chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
-            warn("==> Download new comments\n", .{});
-            const new_json = try twitch.requestCommentsJson(chat_time);
-            comments.deinit();
-            try comments.parse(new_json);
-
-            comments.skipToNextIndex(chat_time);
-
+            warn("==> Start download new comments\n", .{});
+            download.chat_time = chat_time;
+            th = try Thread.spawn(&download, Download.download);
             continue;
+        } else if (download.state == .Finished) {
+            warn("==> Finished downloading new comments\n", .{});
+            comments.deinit();
+            try comments.parse(download.body);
+            chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+            comments.skipToNextIndex(chat_time);
+            download.freeBody();
+            download.state = .Using;
+            // th.wait();
         }
 
         std.time.sleep(std.time.ns_per_s * 0.5);
     }
 }
+
+const Download = struct {
+    const Self = @This();
+    twitch: Twitch,
+    chat_time: f64,
+    state: enum {
+        Using,
+        Downloading,
+        Finished,
+    },
+    body: []const u8,
+
+    pub fn download(self: *Self) !void {
+        self.state = .Downloading;
+        self.body = try self.twitch.requestCommentsJson(self.chat_time);
+        self.state = .Finished;
+    }
+
+    pub fn freeBody(self: Self) void {
+        self.twitch.allocator.free(self.body);
+    }
+};

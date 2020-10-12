@@ -32,6 +32,7 @@ pub const Mpv = struct {
 
     pub fn init(allocator: *Allocator, socket_path: []const u8) !Self {
         const socket_file = try net.connectUnixSocket(socket_path);
+        errdefer os.close(socket_file.handle);
 
         var self = Self{
             .fd = socket_file.handle,
