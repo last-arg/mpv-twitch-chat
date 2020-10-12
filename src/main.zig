@@ -38,24 +38,23 @@ pub fn main() anyerror!void {
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
     var twitch = Twitch.init(allocator, video_id, ssl);
-
-    warn("==> Download comments\n", .{});
     var chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
 
-    const json_str = try twitch.downloadComments(chat_time);
-    // const json_str = @embedFile("../test/skadoodle-chat.json");
-
-    var comments = try Comments.init(allocator, json_str, chat_offset);
+    var comments = blk: {
+        warn("==> Download comments\n", .{});
+        const json_str = try twitch.downloadComments(chat_time);
+        defer allocator.free(json_str);
+        // const json_str = @embedFile("../test/skadoodle-chat.json");
+        break :blk try Comments.init(allocator, json_str, chat_offset);
+    };
     defer comments.deinit();
 
     var download = Download{
         .twitch = twitch,
         .chat_time = chat_time,
-        .body = json_str,
+        .data = "",
         .state = .Using,
     };
-    download.freeBody();
-    errdefer download.freeBody();
 
     var th: *Thread = undefined;
     while (true) {
@@ -80,10 +79,10 @@ pub fn main() anyerror!void {
         } else if (download.state == .Finished) {
             warn("==> Finished downloading new comments\n", .{});
             comments.deinit();
-            try comments.parse(download.body);
+            try comments.parse(download.data);
             chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
             comments.skipToNextIndex(chat_time);
-            download.freeBody();
+            download.freeData();
             download.state = .Using;
             // th.wait();
         }
@@ -101,15 +100,15 @@ const Download = struct {
         Downloading,
         Finished,
     },
-    body: []const u8,
+    data: []const u8,
 
     pub fn download(self: *Self) !void {
         self.state = .Downloading;
-        self.body = try self.twitch.downloadComments(self.chat_time);
+        self.data = try self.twitch.downloadComments(self.chat_time);
         self.state = .Finished;
     }
 
-    pub fn freeBody(self: Self) void {
-        self.twitch.allocator.free(self.body);
+    pub fn freeData(self: Self) void {
+        self.twitch.allocator.free(self.data);
     }
 };
