@@ -32,8 +32,8 @@ pub fn main() anyerror!void {
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
     defer mpv.deinit();
 
-    // const video_id = try t.urlToVideoId(mpv.video_path);
-    const video_id = "762169747";
+    const video_id = try t.urlToVideoId(mpv.video_path);
+    // const video_id = "762169747";
 
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
@@ -66,18 +66,20 @@ pub fn main() anyerror!void {
             try stdout.writeAll(str);
         }
 
-        const first_offset = comments.offsets[0] - chat_offset;
-        const last_offset = comments.offsets[comments.offsets.len - 1] - chat_offset;
+        // TODO: move outside of loop
+        // TODO: update when new comments downloaded
+        const first_offset = comments.offsets[0];
+        const last_offset = comments.offsets[comments.offsets.len - 1];
         if (download.state == .Using and
             ((!comments.has_prev and mpv.video_time < first_offset) or
             (!comments.has_next and mpv.video_time > last_offset)))
         {
-            warn("==> Start download new comments\n", .{});
+            warn("==> Download new comments\n", .{});
             download.chat_time = chat_time;
             th = try Thread.spawn(&download, Download.download);
             continue;
         } else if (download.state == .Finished) {
-            warn("==> Finished downloading new comments\n", .{});
+            warn("==> Downloaded new comments\n", .{});
             comments.deinit();
             try comments.parse(download.data);
             chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
