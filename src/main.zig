@@ -13,6 +13,8 @@ const time = std.time;
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
 
+const default_delay = std.time.ns_per_s * 1.0;
+
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
@@ -32,8 +34,8 @@ pub fn main() anyerror!void {
     var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
     defer mpv.deinit();
 
-    const video_id = try t.urlToVideoId(mpv.video_path);
-    // const video_id = "762169747";
+    // const video_id = try t.urlToVideoId(mpv.video_path);
+    const video_id = "762169747";
 
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
@@ -68,6 +70,7 @@ pub fn main() anyerror!void {
             try stdout.writeAll(str);
         }
 
+        // TODO: start downloading comments before last comment
         if (download.state == .Using and
             ((!comments.has_prev and mpv.video_time < first_offset) or
             (!comments.has_next and mpv.video_time > last_offset)))
@@ -89,7 +92,17 @@ pub fn main() anyerror!void {
             // th.wait();
         }
 
-        std.time.sleep(std.time.ns_per_s * 0.5);
+        const delay: u64 = blk: {
+            if (comments.next_index < comments.offsets.len) {
+                const next_offset = comments.offsets[comments.next_index];
+                const new_delay = next_offset - chat_time;
+                if (new_delay < default_delay and new_delay > 0) {
+                    break :blk @floatToInt(u64, (std.time.ns_per_s + 1) * new_delay);
+                }
+            }
+            break :blk default_delay;
+        };
+        std.time.sleep(delay);
     }
 }
 
