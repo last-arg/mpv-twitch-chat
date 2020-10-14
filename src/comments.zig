@@ -89,7 +89,6 @@ pub const Comments = struct {
     }
 
     pub fn skipToNextIndex(self: *Self, time: f64) void {
-        warn("==> Skip new comments\n", .{});
         const first = self.offsets[0];
         const last = self.offsets[self.offsets.len - 1];
 

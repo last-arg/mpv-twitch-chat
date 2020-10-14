@@ -57,6 +57,8 @@ pub fn main() anyerror!void {
     };
 
     var th: *Thread = undefined;
+    var first_offset = comments.offsets[0];
+    var last_offset = comments.offsets[comments.offsets.len - 1];
     while (true) {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
@@ -66,24 +68,22 @@ pub fn main() anyerror!void {
             try stdout.writeAll(str);
         }
 
-        // TODO: move outside of loop
-        // TODO: update when new comments downloaded
-        const first_offset = comments.offsets[0];
-        const last_offset = comments.offsets[comments.offsets.len - 1];
         if (download.state == .Using and
             ((!comments.has_prev and mpv.video_time < first_offset) or
             (!comments.has_next and mpv.video_time > last_offset)))
         {
-            warn("==> Download new comments\n", .{});
+            warn("==> Start downloading comments\n", .{});
             download.chat_time = chat_time;
             th = try Thread.spawn(&download, Download.download);
             continue;
         } else if (download.state == .Finished) {
-            warn("==> Downloaded new comments\n", .{});
+            warn("==> Finished downloading comments\n", .{});
             comments.deinit();
             try comments.parse(download.data);
             chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
             comments.skipToNextIndex(chat_time);
+            first_offset = comments.offsets[0];
+            last_offset = comments.offsets[comments.offsets.len - 1];
             download.freeData();
             download.state = .Using;
             // th.wait();
