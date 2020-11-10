@@ -1,3 +1,6 @@
+build:
+	zig build run
+
 dev:
 	ls src/* | entr -c -r zig build run
 	
