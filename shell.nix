@@ -2,7 +2,7 @@
 with pkgs;
 mkShell {
   buildInputs = [
-    # zig-master
+    zig-master
     openssl
     pkgconfig
   ];
