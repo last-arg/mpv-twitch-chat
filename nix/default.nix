@@ -1,12 +1,22 @@
 { stdenv, fetchurl }:
-
+let
+  json_file = builtins.fetchurl {
+    url = "https://ziglang.org/download/index.json";
+    # flake requires a sha256
+    sha256 = "121z2mldg07qn9pd8cmgcq2lpghjq2bqcgds6k2wwyim2f22z21i";
+    # sha256 = stdenv.lib.fakeSha256;
+  };
+  json_content = builtins.readFile json_file;
+  json = builtins.fromJSON json_content;
+  latest = json.master.x86_64-linux;
+in
 stdenv.mkDerivation rec {
-  version = "master";
+  version = json.master.version;
   name = "zig-master";
 
   src = fetchurl {
-    url = "https://ziglang.org/builds/zig-linux-x86_64-0.6.0+342ba960f.tar.xz";
-    sha256 = "c11f12594f49080adc90275c327009349c7312ea1cad1b29a060e608f7d5b5e6";
+    url = latest.tarball;
+    sha256 = latest.shasum;
   };
 
   sourceRoot = ".";
