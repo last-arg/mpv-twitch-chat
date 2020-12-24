@@ -24,7 +24,6 @@ pub fn build(b: *Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    @import("std").debug.warn("{}\n", .{b.default_step});
     var test_file = blk: {
         if (b.args) |args| {
             break :blk args[0];

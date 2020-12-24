@@ -20,22 +20,41 @@ pub fn main() anyerror!void {
     const allocator = &gpa.allocator;
     const stdout = std.io.getStdOut().outStream();
 
+    var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
+    var chat_offset: f32 = 0.0;
+
+    // TODO: --comments-offset
+    // TODO: --socket-path
     var arg_it = std.process.args();
     _ = arg_it.skip();
-    const chat_offset = blk: {
-        if (arg_it.nextPosix()) |value| {
-            break :blk try fmt.parseFloat(f64, value);
+    while (arg_it.nextPosix()) |arg| {
+        if (std.mem.eql(u8, "-comments-offset", arg)) {
+            const value = arg_it.nextPosix() orelse {
+                warn("No value (integer or float) enter for option -comments-offset\n", .{});
+                break;
+            };
+            // TODO?: remove negation?
+            chat_offset = -(try fmt.parseFloat(f32, value));
+        } else if (std.mem.eql(u8, "--socket-path", arg)) {
+            const value = arg_it.nextPosix() orelse {
+                warn("No value (integer or float) enter for option -socket-path\n", .{});
+                break;
+            };
+            socket_path = value;
+        } else if (std.mem.eql(u8, "-help", arg) and std.mem.eql(u8, "-h", arg)) {
+            // TODO: print help test
+            return;
         }
-        warn("No CLI arguments.\n", .{});
-        break :blk 0.0;
-    };
+    }
 
-    warn("==> Connect to MPV socket\n", .{});
-    var mpv = try Mpv.init(allocator, "/tmp/mpv-twitch-socket");
+    var mpv = Mpv.init(allocator, socket_path) catch |err| {
+        warn("Failed to find mpv socket path: {}\n", .{socket_path});
+        return err;
+    };
     defer mpv.deinit();
 
-    // const video_id = try t.urlToVideoId(mpv.video_path);
-    const video_id = "762169747";
+    const video_id = try t.urlToVideoId(mpv.video_path);
+    // const video_id = "762169747";
 
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
