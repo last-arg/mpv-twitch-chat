@@ -23,4 +23,17 @@ pub fn build(b: *Builder) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    @import("std").debug.warn("{}\n", .{b.default_step});
+    var test_file = blk: {
+        if (b.args) |args| {
+            break :blk args[0];
+        }
+        break :blk "src/main.zig";
+    };
+    var main_tests = b.addTest(test_file);
+    main_tests.setBuildMode(mode);
+
+    const test_step = b.step("test", "Run file tests");
+    test_step.dependOn(&main_tests.step);
 }
