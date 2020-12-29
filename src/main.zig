@@ -21,20 +21,18 @@ pub fn main() anyerror!void {
     const stdout = std.io.getStdOut().outStream();
 
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
-    var chat_offset: f32 = 0.0;
+    var comments_delay: f32 = 0.0;
 
-    // TODO: --comments-offset
-    // TODO: --socket-path
     var arg_it = std.process.args();
     _ = arg_it.skip();
     while (arg_it.nextPosix()) |arg| {
-        if (std.mem.eql(u8, "-comments-offset", arg)) {
+        if (std.mem.eql(u8, "-comments-delay", arg)) {
             const value = arg_it.nextPosix() orelse {
-                warn("No value (integer or float) enter for option -comments-offset\n", .{});
+                warn("No value (integer or float) enter for option -comments-delay\n", .{});
                 break;
             };
             // TODO?: remove negation?
-            chat_offset = -(try fmt.parseFloat(f32, value));
+            comments_delay = -(try fmt.parseFloat(f32, value));
         } else if (std.mem.eql(u8, "--socket-path", arg)) {
             const value = arg_it.nextPosix() orelse {
                 warn("No value (integer or float) enter for option -socket-path\n", .{});
@@ -59,14 +57,14 @@ pub fn main() anyerror!void {
     const ssl = try SSL.init(allocator);
     defer ssl.deinit();
     var twitch = Twitch.init(allocator, video_id, ssl);
-    var chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+    var chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
 
     var comments = blk: {
         warn("==> Download comments\n", .{});
         const json_str = try twitch.downloadComments(chat_time);
         defer allocator.free(json_str);
         // const json_str = @embedFile("../test/skadoodle-chat.json");
-        break :blk try Comments.init(allocator, json_str, chat_offset);
+        break :blk try Comments.init(allocator, json_str, comments_delay);
     };
     defer comments.deinit();
 
@@ -84,7 +82,7 @@ pub fn main() anyerror!void {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
 
-        chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+        chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
         while (try comments.nextCommentString(chat_time)) |str| {
             try stdout.writeAll(str);
         }
@@ -102,7 +100,7 @@ pub fn main() anyerror!void {
             warn("==> Finished downloading comments\n", .{});
             comments.deinit();
             try comments.parse(download.data);
-            chat_time = if (mpv.video_time < chat_offset) 0.0 else mpv.video_time - chat_offset;
+            chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
             comments.skipToNextIndex(chat_time);
             first_offset = comments.offsets[0];
             last_offset = comments.offsets[comments.offsets.len - 1];

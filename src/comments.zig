@@ -141,9 +141,10 @@ pub const Comments = struct {
     }
 };
 
+// TODO: fix test
 test "Comments" {
     const json_str = @embedFile("../test/test-chat.json");
-    var c = try Comments.init(std.testing.allocator, json_str);
+    var c = try Comments.init(std.testing.allocator, json_str, 0.0);
     defer c.deinit();
 
     // Parsing
