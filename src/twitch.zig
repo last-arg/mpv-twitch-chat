@@ -6,7 +6,10 @@ const fmt = std.fmt;
 const StringArrayHashMap = std.StringArrayHashMap;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
+const net = std.net;
 const SSL = @import("ssl.zig").SSL;
+const bearssl = @import("zig-bearssl");
+const hzzp = @import("hzzp");
 
 pub const Twitch = struct {
     const Self = @This();
@@ -22,6 +25,7 @@ pub const Twitch = struct {
         };
     }
 
+    // TODO: refactor. Move ssl code to ssl file
     pub fn downloadComments(self: Self, video_offset: f64) ![]const u8 {
         assert(video_offset >= 0.0);
 
@@ -45,11 +49,10 @@ pub const Twitch = struct {
 
         const write_success = try ssl.write(header_str);
 
-        // warn("=================\n", .{});
+        warn("=================\n", .{});
         var buf_ssl: [1024 * 16]u8 = undefined;
 
         var first_bytes = try ssl.read(&buf_ssl);
-        // warn("{}\n", .{buf_ssl[0..first_bytes]});
 
         // Parse header
         var ctx = Context{
@@ -181,6 +184,7 @@ pub const Twitch = struct {
             }
         }
 
+        warn("End of download\n", .{});
         return body.toOwnedSlice();
     }
 };
@@ -213,33 +217,93 @@ const Context = struct {
 };
 
 pub fn urlToVideoId(url: []const u8) ![]const u8 {
+    // TODO: fix. won't work if there is slash after video id and before '?'
     const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
     const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
 
     return url[start_index..end_index];
 }
 
-test "urlToVideoId" {
-    {
-        const url = "https://www.twitch.tv/videos/762169747";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
+// test "urlToVideoId" {
+//     {
+//         const url = "https://www.twitch.tv/videos/855035286";
+//         const result = try urlToVideoId(url);
+//         std.testing.expect(mem.eql(u8, result, "855035286"));
+//     }
+//     {
+//         const url = "https://www.twitch.tv/videos/855035286?t=2h47m8s";
+//         const result = try urlToVideoId(url);
+//         std.testing.expect(mem.eql(u8, result, "855035286"));
+//     }
+//     // TODO: implement test where there is slash after video id and before '?'
+// }
+
+pub fn httpsRequest(allocator: *Allocator, hostname: [:0]const u8, port_nr: u16, path: []const u8) ![]const u8 {
+    // const system_cert = @embedFile("/etc/ssl/certs/ca-certificates.crt");
+    // const cert = system_cert[0 .. system_cert.len - 1]; // Remove last new line
+    const cert = @embedFile("../mozilla-bundle.pem");
+
+    var trust_anchor = bearssl.TrustAnchorCollection.init(allocator);
+    defer trust_anchor.deinit();
+    try trust_anchor.appendFromPEM(cert);
+
+    var x509 = bearssl.x509.Minimal.init(trust_anchor);
+    var client = bearssl.Client.init(x509.getEngine());
+    client.relocate();
+    try client.reset(hostname, false);
+
+    var socket = try net.tcpConnectToHost(allocator, hostname, port_nr);
+    defer socket.close();
+
+    var socket_reader = socket.reader();
+    var socket_writer = socket.writer();
+
+    var ssl_stream = bearssl.initStream(
+        client.getEngine(),
+        &socket_reader,
+        &socket_writer,
+    );
+    defer ssl_stream.close() catch {};
+
+    var buf: [std.mem.page_size]u8 = undefined;
+    var http_client = hzzp.base.client.create(&buf, ssl_stream.inStream(), ssl_stream.outStream());
+
+    try http_client.writeStatusLine("GET", path);
+    try http_client.writeHeaderValue("Accept", "application/vnd.twitchtv.v5+json");
+    try http_client.writeHeaderValue("Connection", "close");
+    try http_client.writeHeaderValue("Host", "api.twitch.tv");
+    try http_client.writeHeaderValue("Client-ID", "yaoofm88l1kvv8i9zx7pyc44he2tcp");
+    try http_client.finishHeaders();
+    try ssl_stream.flush();
+
+    var output = try ArrayList(u8).initCapacity(allocator, 50000);
+    errdefer output.deinit();
+
+    while (try http_client.next()) |event| {
+        switch (event) {
+            .status => |status| {
+                if (status.code != 200) {
+                    warn("Invalid status code {d} returned\n", .{status.code});
+                    return error.BadStatusCode;
+                }
+            },
+            .header => {},
+            .payload => |payload| {
+                try output.appendSlice(payload.data);
+            },
+            .head_done => {},
+            .skip => {},
+            .end => {},
+        }
     }
-    {
-        const url = "https://www.twitch.tv/videos/762169747?t=2h47m8s";
-        const result = try urlToVideoId(url);
-        std.testing.expect(mem.eql(u8, result, "762169747"));
-    }
+
+    return output.toOwnedSlice();
 }
 
-test "download" {
-    const video_id = "762169747";
-    const allocator = std.testing.allocator;
-    const ssl = try SSL.init(allocator);
-    defer ssl.deinit();
-    const twitch = Twitch.init(allocator, video_id, ssl);
-    const r1 = try twitch.requestCommentsJson(1.0);
-    allocator.free(r1);
-    const r2 = try twitch.requestCommentsJson(1.0);
-    allocator.free(r2);
+test "httpsRequest" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const path = "/v5/videos/855035286/comments?content_offset_seconds=2.00";
+    var resp = try httpsRequest(allocator, host, port, path);
+    defer allocator.free(resp);
 }

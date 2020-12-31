@@ -14,8 +14,11 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("twitch-vod-chat", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.linkSystemLibrary("c");
+    exe.linkLibC();
     exe.linkSystemLibrary("openssl");
+    exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
+    exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
     exe.install();
 
     const run_cmd = exe.run();
@@ -30,9 +33,14 @@ pub fn build(b: *Builder) void {
         }
         break :blk "src/main.zig";
     };
-    var main_tests = b.addTest(test_file);
-    main_tests.setBuildMode(mode);
+    var file_test = b.addTest(test_file);
+    file_test.setBuildMode(mode);
+    file_test.linkSystemLibrary("openssl");
+    file_test.linkLibC();
+    file_test.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    file_test.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
+    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", file_test, target);
 
     const test_step = b.step("test", "Run file tests");
-    test_step.dependOn(&main_tests.step);
+    test_step.dependOn(&file_test.step);
 }
