@@ -3,7 +3,7 @@ let
   json_file = builtins.fetchurl {
     url = "https://ziglang.org/download/index.json";
     # flake requires a sha256
-    sha256 = "0c4sd7grg046r391h1yidz7b626aaq84xck6fq5mavyzs7d77gii";
+    sha256 = "1zxcj0dv818g1hk21kpkhmb1l4wv8srr0fl4r3fm3r2jhv0273ga";
     # sha256 = stdenv.lib.fakeSha256;
   };
   json_content = builtins.readFile json_file;
