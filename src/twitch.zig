@@ -7,6 +7,7 @@ const StringArrayHashMap = std.StringArrayHashMap;
 const ArrayList = std.ArrayList;
 const mem = std.mem;
 const net = std.net;
+const log = std.log.default;
 const OpenSSL = @import("ssl.zig").OpenSSL;
 const bearssl = @import("zig-bearssl");
 const hzzp = @import("hzzp");
@@ -78,7 +79,7 @@ pub fn httpsRequest(allocator: *Allocator, hostname: [:0]const u8, port_nr: u16,
         switch (event) {
             .status => |status| {
                 if (status.code != 200) {
-                    warn("Invalid status code {d} returned\n", .{status.code});
+                    log.warn("Invalid status code {d} returned\n", .{status.code});
                     return error.BadStatusCode;
                 }
             },

@@ -11,8 +11,8 @@ const BOLD = ESC_CHAR ++ "[1m";
 const RESET = ESC_CHAR ++ "[0m";
 
 pub const Comments = struct {
-    offsets: []const f64,
-    comments: []const Comment,
+    offsets: Offsets,
+    comments: CommentArray,
     allocator: *Allocator,
     next_index: usize = 0,
     chat_offset_correction: f64 = 0.0,
@@ -25,14 +25,16 @@ pub const Comments = struct {
         body: []u8,
     };
 
-    pub fn init(allocator: *Allocator, json_str: []const u8, chat_offset_correction: f64) !Self {
+    const Offsets = ArrayList(f64);
+    const CommentArray = ArrayList(Comment);
+
+    pub fn init(allocator: *Allocator, chat_offset_correction: f64) !Self {
         var self = Self{
-            .offsets = undefined,
-            .comments = undefined,
+            .offsets = try Offsets.initCapacity(allocator, 60),
+            .comments = try CommentArray.initCapacity(allocator, 60),
             .chat_offset_correction = chat_offset_correction,
             .allocator = allocator,
         };
-        try self.parse(json_str);
         return self;
     }
 
@@ -47,12 +49,6 @@ pub const Comments = struct {
 
         if (root.Object.getEntry("comments")) |comments| {
             const num = comments.value.Array.items.len;
-
-            var offsets_array = try ArrayList(f64).initCapacity(self.allocator, num);
-            errdefer offsets_array.deinit();
-
-            var comments_array = try ArrayList(Comment).initCapacity(self.allocator, num);
-            errdefer comments_array.deinit();
 
             for (comments.value.Array.items) |comment| {
                 const commenter = comment.Object.getEntry("commenter").?.value;
@@ -75,12 +71,10 @@ pub const Comments = struct {
                     .name = try mem.dupe(self.allocator, u8, name),
                     .body = try mem.dupe(self.allocator, u8, message_body),
                 };
-                try comments_array.append(new_comment);
+                try self.comments.append(new_comment);
 
-                try offsets_array.append(offset_seconds);
+                try self.offsets.append(offset_seconds);
             }
-            self.offsets = offsets_array.toOwnedSlice();
-            self.comments = comments_array.toOwnedSlice();
             self.has_next = root.Object.getEntry("_next") == null;
             self.has_prev = root.Object.getEntry("_prev") == null;
         } else {
@@ -89,18 +83,18 @@ pub const Comments = struct {
     }
 
     pub fn skipToNextIndex(self: *Self, time: f64) void {
-        const first = self.offsets[0];
-        const last = self.offsets[self.offsets.len - 1];
+        const first = self.offsets.items[0];
+        const last = self.offsets.items[self.offsets.items.len - 1];
 
         if (time > last) {
-            self.next_index = self.offsets.len;
+            self.next_index = self.offsets.items.len;
         }
 
         if (time < first) {
             self.next_index = 0;
         }
 
-        for (self.offsets) |offset, i| {
+        for (self.offsets.items) |offset, i| {
             if (offset > time) {
                 self.next_index = i;
                 break;
@@ -109,11 +103,11 @@ pub const Comments = struct {
     }
 
     pub fn nextCommentString(self: *Self, time: f64) !?[]u8 {
-        if (self.next_index >= self.offsets.len) return null;
-        if (self.offsets[self.next_index] > time) return null;
+        if (self.next_index >= self.offsets.items.len) return null;
+        if (self.offsets.items[self.next_index] > time) return null;
 
-        const offset = self.offsets[self.next_index] + self.chat_offset_correction;
-        const comment = self.comments[self.next_index];
+        const offset = self.offsets.items[self.next_index] + self.chat_offset_correction;
+        const comment = self.comments.items[self.next_index];
 
         const hours = @floatToInt(u32, offset / (60 * 60));
         const minutes = @floatToInt(
@@ -133,11 +127,11 @@ pub const Comments = struct {
     }
 
     pub fn deinit(self: Self) void {
-        for (self.comments) |comment| {
+        for (self.comments.items) |comment| {
             self.allocator.free(comment.body);
         }
-        self.allocator.free(self.offsets);
-        self.allocator.free(self.comments);
+        self.offsets.deinit();
+        self.comments.deinit();
     }
 };
 
