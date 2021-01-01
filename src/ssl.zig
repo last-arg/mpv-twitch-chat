@@ -6,14 +6,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const net = std.net;
 const os = std.os;
-const bearssl = @import("zig-bearssl");
-const hzzp = @import("hzzp");
 const c = @import("c.zig");
-
-pub const SSL = BearSSL;
-
-const host = "www.twitch.tv";
-const port = 443;
 
 // Non-blocking openssl
 // https://stackoverflow.com/a/31174268
@@ -34,8 +27,6 @@ pub const OpenSSL = struct {
     allocator: *Allocator,
 
     pub fn init(allocator: *Allocator) !Self {
-        warn("init OpenSSL\n", .{});
-
         // define SSL_library_init() OPENSSL_init_ssl(0, NULL)
         // Return: always 1
         const lib_init = c.OPENSSL_init_ssl(0, null);
@@ -60,10 +51,10 @@ pub const OpenSSL = struct {
         };
     }
 
-    pub fn connect(self: *Self) !void {
+    pub fn connect(self: *Self, hostname: []const u8, port: u16) !void {
         const ctx = self.ctx;
 
-        const socket = try net.tcpConnectToHost(self.allocator, host, port);
+        const socket = try net.tcpConnectToHost(self.allocator, hostname, port);
         errdefer socket.close();
 
         const ssl = c.SSL_new(ctx) orelse return error.SSLNew;
@@ -98,23 +89,36 @@ pub const OpenSSL = struct {
         if (self.socket) |socket| socket.close();
     }
 
-    pub fn read(self: Self, buf: []u8) !usize {
-        const ssl = self.ssl orelse return error.SSLIsNull;
+    pub const ReadError = error{NegativeBytes};
+    pub const WriteError = error{NegativeBytes};
+    pub const Reader = std.io.Reader(*OpenSSL, ReadError, read);
+    pub const Writer = std.io.Writer(*OpenSSL, WriteError, write);
+
+    pub fn reader(self: *@This()) Reader {
+        return .{ .context = self };
+    }
+
+    pub fn writer(self: *@This()) Writer {
+        return .{ .context = self };
+    }
+
+    pub fn read(self: *Self, buf: []u8) ReadError!usize {
+        const ssl = self.ssl orelse unreachable;
         const len = @intCast(c_int, buf.len);
         const bytes = c.SSL_read(ssl, @ptrCast(*c_void, buf), len);
         if (bytes <= 0) {
             warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
-            return error.SSLRead;
+            return error.NegativeBytes;
         }
         return @intCast(usize, bytes);
     }
 
-    pub fn write(self: Self, header_str: []u8) !usize {
-        const ssl = self.ssl orelse return error.SSLIsNull;
-        const bytes = c.SSL_write(ssl, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
+    pub fn write(self: *Self, data: []const u8) WriteError!usize {
+        const ssl = self.ssl orelse unreachable;
+        const bytes = c.SSL_write(ssl, @ptrCast(*const c_void, data), @intCast(c_int, data.len));
         if (bytes <= 0) {
             warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
-            return error.SSLRead;
+            return error.NegativeBytes;
         }
         return @intCast(usize, bytes);
     }
@@ -132,109 +136,5 @@ pub const OpenSSL = struct {
             warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, ssl_fd)});
             return error.SSLConnect;
         }
-    }
-};
-
-// Basic client example: https://bearssl.org/gitweb/?p=BearSSL;a=blob;f=samples/client_basic.c;h=31a88be4c128309091bde3e2065ebf416688ce02;hb=HEAD
-pub const BearSSL = struct {
-    const Self = @This();
-
-    trust_anchor: bearssl.TrustAnchorCollection,
-    socket_file: ?*fs.File = null,
-    client: *bearssl.Client,
-    stream: *Stream,
-
-    pub const Stream = bearssl.Stream(*std.fs.File.Reader, *std.fs.File.Writer);
-
-    pub fn init(allocator: *Allocator) !Self {
-        var buf: [1024 * 16]u8 = undefined;
-        warn("init BearSSL\n", .{});
-
-        const cert = @embedFile("../cert.pem");
-
-        var trust_anchor = bearssl.TrustAnchorCollection.init(allocator);
-        errdefer trust_anchor.deinit();
-        try trust_anchor.appendFromPEM(cert);
-
-        var x509 = bearssl.x509.Minimal.init(trust_anchor);
-
-        var client = bearssl.Client.init(x509.getEngine());
-        client.relocate();
-        try client.reset(host, false);
-
-        var socket = try net.tcpConnectToHost(allocator, host, port);
-        errdefer socket.close();
-
-        var stream = bearssl.initStream(
-            client.getEngine(),
-            &socket.reader(),
-            &socket.writer(),
-        );
-        errdefer stream.close catch {};
-
-        var http_client = hzzp.base.client.create(&buf, stream.inStream(), stream.outStream());
-
-        return BearSSL{
-            .trust_anchor = trust_anchor,
-            .socket_file = &socket,
-            .client = &client,
-            .stream = &stream,
-        };
-    }
-
-    pub fn connect(ssl: *Self) !void {
-        //
-    }
-
-    pub fn connectCleanup(ssl: Self) void {
-        //
-    }
-
-    pub fn read(ssl: Self, buf: []u8) !usize {
-        // warn("read\n", .{});
-        // assert(ssl.socket_file != null);
-        return 0;
-    }
-
-    // pub fn read(self: Self, buf: []u8) !usize {
-    //     const ssl = self.ssl orelse return error.SSLIsNull;
-    //     const len = @intCast(c_int, buf.len);
-    //     const bytes = c.SSL_read(ssl, @ptrCast(*c_void, buf), len);
-    //     if (bytes <= 0) {
-    //         warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
-    //         return error.SSLRead;
-    //     }
-    //     return @intCast(usize, bytes);
-    // }
-
-    pub fn write(ssl: Self, header_str: []u8) !usize {
-        assert(ssl.socket_file != null);
-        // ssl.client.relocate();
-        // warn("test this\n", .{});
-        // var bytes: usize = try ssl.stream.inStream().context.writeAll(header_str);
-        // warn("bytes: {}\n", .{bytes});
-        // while () {
-        // }
-        // try ssl.stream.flush();
-        return 0;
-    }
-
-    // pub fn write(self: Self, header_str: []u8) !usize {
-    //     const ssl = self.ssl orelse return error.SSLIsNull;
-    //     const bytes = c.SSL_write(ssl, @ptrCast(*const c_void, header_str), @intCast(c_int, header_str.len));
-    //     if (bytes <= 0) {
-    //         warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
-    //         return error.SSLRead;
-    //     }
-    //     return @intCast(usize, bytes);
-    // }
-
-    pub fn deinit(ssl: *Self) void {
-        ssl.trust_anchor.deinit();
-        if (ssl.socket_file) |f| f.close();
-        ssl.stream.close() catch |err| {
-            warn("ERROR: SSL stream was not terminated correctly\n", .{});
-            warn("ERROR MSG: {s}\n", .{err});
-        };
     }
 };
