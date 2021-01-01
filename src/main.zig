@@ -12,12 +12,15 @@ const time = std.time;
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
 
+pub const log_level: std.log.Level = .warn;
+
 const g_host = "www.twitch.tv";
 const g_port = 443;
-const default_delay = 1.0;
+const default_delay = 1.0; // seconds
 const default_delay_ns = std.time.ns_per_s * 1.0;
+const download_time = 3.0; // seconds. has to be natural number
 
-const debug = false;
+const debug = true;
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -61,7 +64,7 @@ pub fn main() anyerror!void {
     // Debug
     if (debug) {
         allocator.free(mpv.video_path);
-        mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855035286");
+        mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855788435");
     }
     const video_id = try twitch.urlToVideoId(mpv.video_path);
     // const video_id = "855035286";
@@ -78,6 +81,11 @@ pub fn main() anyerror!void {
     };
     defer comments.deinit();
 
+    var th: *Thread = undefined;
+
+    // TODO: download next comments right now
+    // var comments_new: Comments = undefined;
+
     var download = Download{
         .allocator = allocator,
         .data = "",
@@ -87,7 +95,6 @@ pub fn main() anyerror!void {
         .path = "",
     };
 
-    var th: *Thread = undefined;
     var first_offset = comments.offsets[0];
     var last_offset = comments.offsets[comments.offsets.len - 1];
     while (true) {
@@ -99,26 +106,35 @@ pub fn main() anyerror!void {
             try stdout.writeAll(str);
         }
 
-        // TODO: start downloading comments before last comment
-        if (download.state == .Using and
-            ((!comments.has_prev and mpv.video_time < first_offset) or
-            (!comments.has_next and mpv.video_time > last_offset)))
-        {
-            warn("==> Start downloading comments\n", .{});
-            download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
-            th = try Thread.spawn(&download, Download.download);
-            continue;
-        } else if (download.state == .Finished) {
-            warn("==> Finished downloading comments\n", .{});
-            comments.deinit();
-            try comments.parse(download.data);
-            chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
-            comments.skipToNextIndex(chat_time);
-            first_offset = comments.offsets[0];
-            last_offset = comments.offsets[comments.offsets.len - 1];
-            download.freeData();
-            download.state = .Using;
-            // th.wait();
+        // TODO?: chage to switch?
+        switch (download.state) {
+            .Using => {
+                if (((!comments.has_prev and mpv.video_time < first_offset) or
+                    (!comments.has_next and mpv.video_time > last_offset)) and
+                    mpv.video_time > (last_offset - download_time))
+                {
+                    warn("==> Start downloading comments\n", .{});
+                    download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
+                    th = try Thread.spawn(&download, Download.download);
+                    continue;
+                }
+            },
+            .Finished => {
+                // TODO: check if comments need changing
+                // might have to start new download
+                warn("==> Finished downloading comments\n", .{});
+                comments.deinit();
+                try comments.parse(download.data);
+                chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
+                // TODO: Should be last comments offset if no skip took place
+                comments.skipToNextIndex(chat_time);
+                first_offset = comments.offsets[0];
+                last_offset = comments.offsets[comments.offsets.len - 1];
+                download.freeData();
+                download.state = .Using;
+                // th.wait();
+            },
+            .Downloading => {},
         }
 
         const delay_ns: u64 = blk: {

@@ -3,6 +3,7 @@ const mem = std.mem;
 const os = std.os;
 const Allocator = std.mem.Allocator;
 const net = std.net;
+const log = std.log.default;
 const warn = std.debug.warn;
 
 pub const Mpv = struct {
@@ -102,7 +103,12 @@ pub const Mpv = struct {
             }
 
             var stream_event = std.json.TokenStream.init(json_str);
-            const resp = try std.json.parse(Mpv.Event, &stream_event, .{ .allocator = self.allocator });
+            const resp = std.json.parse(Mpv.Event, &stream_event, .{
+                .allocator = self.allocator,
+            }) catch |err| {
+                log.err("Failed to parse json string: '{}'", .{json_str});
+                continue;
+            };
             defer std.json.parseFree(Mpv.Event, resp, .{ .allocator = self.allocator });
             warn("EVENT: {}\n", .{resp.event});
         }

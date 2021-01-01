@@ -178,6 +178,7 @@ pub fn httpsRequestOpenSSL(allocator: *Allocator, hostname: [:0]const u8, port: 
     errdefer output.deinit();
 
     while (true) {
+        // Get chunk size
         var total_read_bytes: usize = 0;
         const body_line = blk: {
             const tmp = (try reader.readUntilDelimiterOrEof(&buf_ssl, '\n')) orelse return error.InvalidStatusLine;
