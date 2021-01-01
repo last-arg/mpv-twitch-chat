@@ -16,9 +16,10 @@
           pkgs =
             let
               p = nixpkgs.legacyPackages.${system};
-              zig-master = p.callPackage ./nix/default.nix { };
+              zig-master = p.callPackage ./nix/zig.nix { };
+              notcurses = p.callPackage ./nix/notcurses.nix { };
             in
-            p // { inherit zig-master; };
+            p // { inherit zig-master notcurses; };
         in
         {
           devShell = import ./shell.nix { inherit pkgs; };

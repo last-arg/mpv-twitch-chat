@@ -16,7 +16,7 @@ zig build
 
 ## Build without build.zig on Nixos
 ```console
-zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto --release-small
+zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto -lnotcurses -Drelease-safe
 ```
 
 

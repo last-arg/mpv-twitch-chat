@@ -9,6 +9,12 @@ const Comments = @import("comments.zig").Comments;
 const twitch = @import("twitch.zig");
 const Thread = std.Thread;
 const time = std.time;
+const nc = @cImport({
+    @cInclude("notcurses/notcurses.h");
+    @cInclude("notcurses/direct.h");
+    @cInclude("notcurses/nckeys.h");
+    @cInclude("notcurses/version.h");
+});
 
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
@@ -24,6 +30,18 @@ const download_time = 3.0; // seconds. has to be natural number
 const debug = true;
 
 pub fn main() anyerror!void {
+    // warn("MAIN\n", .{});
+    // // const nc_struct = nc.notcurses_init(null, null);
+    // const v = nc.notcurses_version();
+    // warn("notcurses version: {}\n", .{v});
+    // var c: ?u8 = 1;
+    // var i: usize = 0;
+    // while (c != @as(u8, 0x00)) : (i += 1) {
+    //     c = v[i];
+    //     warn("{c}", .{c});
+    // }
+
+    // if (true) return;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
     const stdout = std.io.getStdOut().outStream();
