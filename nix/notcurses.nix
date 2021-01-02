@@ -10,7 +10,7 @@
 , multimediaSupport ? true
 }:
 let
-  version = "2.1.0";
+  version = "2.1.3";
 in
 stdenv.mkDerivation {
   pname = "notcurses";
@@ -24,14 +24,14 @@ stdenv.mkDerivation {
     ++ lib.optional multimediaSupport ffmpeg;
 
   cmakeFlags =
-    [ "-DUSE_QRCODEGEN=OFF" ]
+    [ "-DUSE_QRCODEGEN=OFF" "-DCMAKE_INSTALL_INCLUDEDIR=include" "-DCMAKE_INSTALL_LIBDIR=lib" ]
     ++ lib.optional (!multimediaSupport) "-DUSE_MULTIMEDIA=none";
 
   src = fetchFromGitHub {
     owner = "dankamongmen";
     repo = "notcurses";
     rev = "v${version}";
-    sha256 = "0jvngg40c1sqf85kqy6ya0vflpxsj7j4g6cw609992rifaghxiny";
+    sha256 = "1gndsim0wg28z8sv2xrk7vgw20yfdy7axj50nwml8893i4gi7xqg";
   };
 
   meta = {

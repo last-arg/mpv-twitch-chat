@@ -16,13 +16,8 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.linkLibC();
-
     // exe.linkSystemLibrary("openssl");
-    // TODO: replace includedir with this
-    // For some reason caused glibc version mismatch
     exe.linkSystemLibrary("notcurses");
-    exe.addSystemIncludeDir("/nix/store/vzm5ln9prphyjzswhblpg2yzzzsq9qpy-notcurses-2.1.0-dev/include/");
-    // exe.addLibPath("/nix/store/v4isrlw03b9f3bgcqfsrrdh7y8zdzv5y-notcurses-2.1.0/lib");
     // exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
     // exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
     // @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
