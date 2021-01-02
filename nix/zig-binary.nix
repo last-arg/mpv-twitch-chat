@@ -3,7 +3,7 @@ let
   json_file = builtins.fetchurl {
     url = "https://ziglang.org/download/index.json";
     # flake requires a sha256
-    sha256 = "1zxcj0dv818g1hk21kpkhmb1l4wv8srr0fl4r3fm3r2jhv0273ga";
+    sha256 = "0049m24dchl7m39j01gnnf2m6akackr5a8hcad26480zwpjbwmam";
     # sha256 = stdenv.lib.fakeSha256;
   };
   json_content = builtins.readFile json_file;
@@ -12,7 +12,7 @@ let
 in
 stdenv.mkDerivation rec {
   version = json.master.version;
-  name = "zig-master";
+  name = "zig-binary";
 
   src = fetchurl {
     url = latest.tarball;
