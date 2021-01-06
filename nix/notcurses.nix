@@ -30,8 +30,8 @@ stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "dankamongmen";
     repo = "notcurses";
-    rev = "v${version}";
-    sha256 = "1gndsim0wg28z8sv2xrk7vgw20yfdy7axj50nwml8893i4gi7xqg";
+    rev = "19c41170c1f20ee770a1d12cc5efc70300fbd260";
+    sha256 = "03zzrj0rn8xwxw130mvc48wb1bfx03wkp22fxvls0flv8gc3v5jq";
   };
 
   meta = {
