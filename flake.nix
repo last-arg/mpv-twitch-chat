@@ -16,13 +16,13 @@
           zig-master = final: prev:
             {
               zig-master = final.zig.overrideAttrs (oldAttrs: rec {
-                rev = "a9c75a2b48f202d5c55097877499942ed07cc2e8";
+                rev = "91e3431d4a55aa46884b267be5aa586f3ed94f74";
                 version = builtins.substring 0 6 rev;
                 src = final.fetchFromGitHub {
                   owner = "ziglang";
                   repo = oldAttrs.pname;
                   rev = rev;
-                  sha256 = "06k92fiid7i477v242flpc2vd2zmri7qi79msfav3ykivprpzg7w";
+                  sha256 = "0bj1ch5yxyafwzsh8vaqfi1wc7i1bfd32wbib8vys85f17h1lyar";
                 };
                 doCheck = false;
               });
