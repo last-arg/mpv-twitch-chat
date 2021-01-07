@@ -145,20 +145,27 @@ pub fn main() anyerror!void {
                 continue;
             },
             .Ready => {
-                // TODO: if ready is fired to many times download new comments
-                // Or keep track of mpv seek event firing
                 chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
-                const first = comments_new.offsets.items[0];
-                const last = comments_new.offsets.items[comments_new.offsets.items.len - 1];
-                if (chat_time > first and chat_time < last) {
+                const first_new = comments_new.offsets.items[0];
+                const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
+                if (chat_time > first_new and chat_time < last_new) {
                     log.info("Load new comments", .{});
                     var tmp = comments;
                     comments = comments_new;
                     comments_new = tmp;
                     comments.skipToNextIndex(chat_time);
-                    first_offset = first;
-                    last_offset = last;
+                    first_offset = first_new;
+                    last_offset = last_new;
                     download.state = .Using;
+                } else {
+                    const first = comments.offsets.items[0];
+                    const last = comments.offsets.items[comments.offsets.items.len - 1];
+                    if (last <= chat_time or first >= chat_time) {
+                        comments_new.comments.items.len = 0;
+                        comments_new.offsets.items.len = 0;
+                        download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
+                        th = try Thread.spawn(&download, Download.download);
+                    }
                 }
                 // th.wait();
             },
