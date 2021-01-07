@@ -36,13 +36,14 @@ pub fn main() anyerror!void {
     var path_buf: [256]u8 = undefined;
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
+    // var mode_default = ;
+    var output_mode: []const u8 = "stdout";
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
 
     var arg_it = std.process.args();
     _ = arg_it.skip();
     while (arg_it.nextPosix()) |arg| {
-        // TODO: add -delay option
         if (std.mem.eql(u8, "-comments-delay", arg)) {
             const value = arg_it.nextPosix() orelse {
                 warn("Option '-comments-delay' requires value (integer or float)", .{});
@@ -50,11 +51,35 @@ pub fn main() anyerror!void {
             };
             // TODO?: remove negation?
             comments_delay = -(try fmt.parseFloat(f32, value));
-        } else if (std.mem.eql(u8, "--socket-path", arg)) {
+        } else if (std.mem.eql(u8, "-socket-path", arg)) {
             socket_path = arg_it.nextPosix() orelse {
                 warn("Option '-socket-path' requires path", .{});
                 return;
             };
+        } else if (std.mem.eql(u8, "-output-mode", arg)) {
+            var arg_value = arg_it.nextPosix() orelse {
+                warn("Option '-output-mode' requires one these value: stdout, direct, notcurses", .{});
+                return;
+            };
+            var valid_values = [_][]const u8{ "stdout", "direct", "notcurses" };
+            var has_valid_value = false;
+            for (valid_values) |val| {
+                if (std.mem.eql(u8, val, arg_value)) {
+                    has_valid_value = true;
+                    break;
+                }
+            }
+            if (has_valid_value) {
+                output_mode = arg_value;
+            } else {
+                warn("Option '-output-mode' contains invalid value '{s}'\nValid '-output-mode' values: {s}, {s}, {s}", .{
+                    arg_value,
+                    valid_values[0],
+                    valid_values[1],
+                    valid_values[2],
+                });
+                return;
+            }
         } else if (std.mem.eql(u8, "-help", arg) and std.mem.eql(u8, "-h", arg)) {
             // TODO: print help test
             return;
