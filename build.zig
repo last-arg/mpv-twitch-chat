@@ -18,9 +18,9 @@ pub fn build(b: *Builder) void {
     exe.linkLibC();
     // exe.linkSystemLibrary("openssl");
     exe.linkSystemLibrary("notcurses");
-    // exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
-    // exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
-    // @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
+    exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
+    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
     exe.install();
 
     const run_cmd = exe.run();

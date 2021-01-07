@@ -121,7 +121,7 @@ pub const Comments = struct {
         );
 
         var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
-        const result = try fmt.bufPrint(buf[0..], "[{d}:{d:0>2}:{d:0>2}] " ++ BOLD ++ "{}" ++ RESET ++ ": {}\n", .{ hours, minutes, seconds, comment.name, comment.body });
+        const result = try fmt.bufPrint(buf[0..], "[{d}:{d:0>2}:{d:0>2}] " ++ BOLD ++ "{s}" ++ RESET ++ ": {s}\n", .{ hours, minutes, seconds, comment.name, comment.body });
         self.next_index += 1;
         return result;
     }

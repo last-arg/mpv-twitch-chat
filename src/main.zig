@@ -9,12 +9,6 @@ const Comments = @import("comments.zig").Comments;
 const twitch = @import("twitch.zig");
 const Thread = std.Thread;
 const time = std.time;
-const nc = @cImport({
-    @cInclude("notcurses/notcurses.h");
-    @cInclude("notcurses/direct.h");
-    @cInclude("notcurses/nckeys.h");
-    @cInclude("notcurses/version.h");
-});
 
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
@@ -27,21 +21,14 @@ const default_delay = 1.0; // seconds
 const default_delay_ns = std.time.ns_per_s * 1.0;
 const download_time = 3.0; // seconds. has to be natural number
 
-const debug = true;
+const debug = false;
+
+// Twitch API v5 chat emoticons
+// https://dev.twitch.tv/docs/v5/reference/chat
+
+usingnamespace @import("notcurses.zig");
 
 pub fn main() anyerror!void {
-    // warn("MAIN\n", .{});
-    // // const nc_struct = nc.notcurses_init(null, null);
-    // const v = nc.notcurses_version();
-    // warn("notcurses version: {}\n", .{v});
-    // var c: ?u8 = 1;
-    // var i: usize = 0;
-    // while (c != @as(u8, 0x00)) : (i += 1) {
-    //     c = v[i];
-    //     warn("{c}", .{c});
-    // }
-
-    // if (true) return;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
     const stdout = std.io.getStdOut().outStream();
@@ -75,10 +62,11 @@ pub fn main() anyerror!void {
     }
 
     var mpv = Mpv.init(allocator, socket_path) catch |err| {
-        warn("Failed to find mpv socket path: {}\n", .{socket_path});
+        warn("Failed to find mpv socket path: {s}\n", .{socket_path});
         return err;
     };
     defer mpv.deinit();
+    // const start_time = mpv.video_time;
 
     // Debug
     if (debug) {
@@ -118,6 +106,13 @@ pub fn main() anyerror!void {
         .path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset }),
     };
     th = try Thread.spawn(&download, Download.download);
+
+    // TODO?: Implement video state detection: playing or paused
+    // try mpv.requestProperty("playback-time");
+    // try mpv.readResponses();
+
+    // if (mpv.video_time > start_time) {
+    // }
 
     while (true) {
         try mpv.requestProperty("playback-time");
@@ -183,6 +178,7 @@ pub fn main() anyerror!void {
         };
         std.time.sleep(delay_ns);
     }
+    th.wait();
 }
 
 const Download = struct {

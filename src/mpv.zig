@@ -106,11 +106,11 @@ pub const Mpv = struct {
             const resp = std.json.parse(Mpv.Event, &stream_event, .{
                 .allocator = self.allocator,
             }) catch |err| {
-                log.err("Failed to parse json string: '{}'", .{json_str});
+                log.err("Failed to parse json string: '{s}'", .{json_str});
                 continue;
             };
             defer std.json.parseFree(Mpv.Event, resp, .{ .allocator = self.allocator });
-            warn("EVENT: {}\n", .{resp.event});
+            warn("EVENT: {s}\n", .{resp.event});
         }
     }
 

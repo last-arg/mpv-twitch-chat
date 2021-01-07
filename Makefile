@@ -5,7 +5,7 @@ watch-build:
 	watchexec -c -w src/ -f *.zig zig build
 	
 dev:
-	watchexec -c -r -w src/ -e zig zig build run
+	watchexec -r -c -w src/ -e zig zig build run
 	
 test-main:
 	ls src/*.zig | entr -c -r zig test src/main.zig $$NIX_CFLAGS_COMPILE $$NIX_LDFLAGS -lc -lssl -lcrypto
