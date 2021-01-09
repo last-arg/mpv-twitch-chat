@@ -6,9 +6,11 @@ const Allocator = std.mem.Allocator;
 const Parser = std.json.Parser;
 const ArrayList = std.ArrayList;
 
-const ESC_CHAR = [_]u8{27};
-const BOLD = ESC_CHAR ++ "[1m";
-const RESET = ESC_CHAR ++ "[0m";
+pub const CommentResult = struct {
+    name: []const u8,
+    body: []u8,
+    time: f64,
+};
 
 pub const Comments = struct {
     offsets: Offsets,
@@ -102,28 +104,17 @@ pub const Comments = struct {
         }
     }
 
-    pub fn nextCommentString(self: *Self, time: f64) !?[]u8 {
+    pub fn getNextComment(self: *Self, time: f64) ?CommentResult {
         if (self.next_index >= self.offsets.items.len) return null;
         if (self.offsets.items[self.next_index] > time) return null;
-
         const offset = self.offsets.items[self.next_index] + self.chat_offset_correction;
         const comment = self.comments.items[self.next_index];
-
-        const hours = @floatToInt(u32, offset / (60 * 60));
-        const minutes = @floatToInt(
-            u32,
-            (offset - @intToFloat(f64, hours * 60 * 60)) / 60,
-        );
-
-        const seconds = @floatToInt(
-            u32,
-            (offset - @intToFloat(f64, hours * 60 * 60) - @intToFloat(f64, minutes * 60)),
-        );
-
-        var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
-        const result = try fmt.bufPrint(buf[0..], "[{d}:{d:0>2}:{d:0>2}] " ++ BOLD ++ "{s}" ++ RESET ++ ": {s}\n", .{ hours, minutes, seconds, comment.name, comment.body });
         self.next_index += 1;
-        return result;
+        return CommentResult{
+            .name = comment.name,
+            .body = comment.body,
+            .time = offset,
+        };
     }
 
     pub fn deinit(self: Self) void {

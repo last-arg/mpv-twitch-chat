@@ -6,9 +6,12 @@ const fmt = std.fmt;
 const log = std.log.default;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
+const CommentResult = @import("comments.zig").CommentResult;
 const twitch = @import("twitch.zig");
 const Thread = std.Thread;
 const time = std.time;
+const Timer = std.time.Timer;
+const dd = @import("debug.zig").ttyWarn;
 
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
@@ -18,17 +21,234 @@ pub const log_level: std.log.Level = .info;
 const g_host = "www.twitch.tv";
 const g_port = 443;
 const default_delay = 1.0; // seconds
-const default_delay_ns = std.time.ns_per_s * 1.0;
+const default_delay_ns = std.time.ns_per_s * default_delay;
 const download_time = 3.0; // seconds. has to be natural number
 
-const debug = false;
+const debug = true;
 
 // Twitch API v5 chat emoticons
 // https://dev.twitch.tv/docs/v5/reference/chat
 
-usingnamespace @import("notcurses.zig");
+const nc = @import("notcurses.zig");
+const NotCurses = nc.NotCurses;
+const Plane = nc.Plane;
+const Pile = nc.Pile;
+const Style = nc.Style;
+
+const UiNotCurses = struct {
+    const Self = @This();
+    nc: *NotCurses.T,
+    text_plane: *Plane.T,
+    ui: Ui,
+
+    pub fn init() !Self {
+        var nc_opts = NotCurses.default_options;
+        const n = try NotCurses.init(nc_opts);
+        return UiNotCurses{
+            .nc = n,
+            .text_plane = try createTextArea(n),
+            .ui = Ui{
+                .deinitFn = deinit,
+                .printFn = print,
+                .printCommentFn = printComment,
+                .sleepLoopFn = sleepLoop,
+            },
+        };
+    }
+
+    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+        const input_sleep_ns = time.ns_per_ms * 60;
+        const self = @fieldParentPtr(Self, "ui", &ui);
+        var col_curr: isize = 0;
+        var row_curr: isize = 0;
+        const timer = try Timer.start();
+        const start_time = timer.read();
+
+        while (true) {
+            var char_code: u32 = 0;
+
+            while (char_code != std.math.maxInt(u32)) {
+                char_code = NotCurses.getcNblock(self.nc);
+                // dd("code: {}\n", .{char_code});
+                if (char_code == 'q') {
+                    return;
+                } else if (char_code == 'j') {
+                    Plane.getYX(self.text_plane, &row_curr, &col_curr);
+                    // TODO: don't scroll past panel top
+                    try Plane.moveYX(self.text_plane, row_curr - 1, col_curr);
+                } else if (char_code == 'k') {
+                    Plane.getYX(self.text_plane, &row_curr, &col_curr);
+                    // TODO: don't scroll past panel bottom
+                    try Plane.moveYX(self.text_plane, row_curr + 1, col_curr);
+                } else if (char_code == 'r') {
+                    try NotCurses.render(self.nc);
+                }
+            }
+
+            char_code = 0;
+            try NotCurses.render(self.nc);
+            if (timer.read() > ns) break;
+            std.time.sleep(input_sleep_ns);
+        }
+    }
+
+    fn createTextArea(n: *NotCurses.T) !*Plane.T {
+        const std_plane = try NotCurses.stdplane(n);
+        var cols: usize = 0;
+        var rows: usize = 0;
+        Plane.dimYX(std_plane, &rows, &cols);
+
+        return try Plane.create(std_plane, rows, cols);
+    }
+
+    pub fn printComment(ui: Ui, c: CommentResult) !void {
+        const self = @fieldParentPtr(Self, "ui", &ui);
+        var buf: [512]u8 = undefined; // NOTE: IRC max message length is 512 + extra
+
+        Plane.setStyles(self.text_plane, Style.none);
+
+        const time_str = try secondsToTimeString(c.time);
+        try ui.print(time_str);
+
+        Plane.setStyles(self.text_plane, Style.bold);
+        const name_str = try fmt.bufPrintZ(&buf, " {s}: ", .{c.name});
+        try ui.print(name_str);
+
+        Plane.setStyles(self.text_plane, Style.none);
+        const body_str = try fmt.bufPrintZ(&buf, "{s}\n", .{c.body});
+        try ui.print(body_str);
+
+        Plane.setStyles(self.text_plane, Style.none);
+    }
+
+    pub fn print(ui: Ui, str: [:0]const u8) !void {
+        const self = @fieldParentPtr(Self, "ui", &ui);
+        var lines_added: usize = 0;
+        var text = Plane.putText(self.text_plane, str);
+
+        // dd("##{}##\n", .{text});
+        // dd("##{s}##\n", .{str});
+        var cols: usize = 0;
+        var rows: usize = 0;
+        Plane.dimYX(self.text_plane, &rows, &cols);
+
+        while (text.result < 0) {
+            const new_rows = rows + 1;
+            try Plane.resizeSimple(self.text_plane, new_rows, cols);
+            rows = new_rows;
+            text = Plane.putText(self.text_plane, str[text.bytes..]);
+            lines_added += 1;
+        }
+
+        var row: isize = 0;
+        var col: isize = 0;
+        Plane.getYX(self.text_plane, &row, &col);
+        try Plane.moveYX(self.text_plane, row - @intCast(isize, lines_added), col);
+
+        try NotCurses.render(self.nc);
+    }
+
+    pub fn deinit(ui: Ui) void {
+        const self = @fieldParentPtr(Self, "ui", &ui);
+        NotCurses.stop(self.nc);
+    }
+};
+
+const UiStdout = struct {
+    const Self = @This();
+    const stdout = std.io.getStdOut().outStream();
+    const ESC_CHAR = [_]u8{27};
+    const BOLD = ESC_CHAR ++ "[1m";
+    const RESET = ESC_CHAR ++ "[0m";
+
+    ui: Ui,
+
+    pub fn init() !UiStdout {
+        return UiStdout{
+            .ui = Ui{
+                .deinitFn = deinit,
+                .printFn = print,
+                .printCommentFn = printComment,
+                .sleepLoopFn = sleepLoop,
+            },
+        };
+    }
+
+    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+        std.time.sleep(ns);
+    }
+
+    pub fn printComment(ui: Ui, c: CommentResult) !void {
+        const time_str = try secondsToTimeString(c.time);
+        var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
+        const result = try fmt.bufPrintZ(
+            buf[0..],
+            "{s} " ++ BOLD ++ "{s}" ++ RESET ++ ": {s}\n",
+            .{ time_str, c.name, c.body },
+        );
+        try ui.print(result);
+    }
+
+    pub fn print(ui: Ui, str: [:0]const u8) !void {
+        try Self.stdout.writeAll(str);
+    }
+
+    pub fn deinit(ui: Ui) void {}
+};
+
+pub fn secondsToTimeString(comment_seconds: f64) ![:0]u8 {
+    const hours = @floatToInt(u32, comment_seconds / (60 * 60));
+    const minutes = @floatToInt(
+        u32,
+        (comment_seconds - @intToFloat(f64, hours * 60 * 60)) / 60,
+    );
+
+    const seconds = @floatToInt(
+        u32,
+        (comment_seconds - @intToFloat(f64, hours * 60 * 60) - @intToFloat(f64, minutes * 60)),
+    );
+
+    var buf: [16]u8 = undefined;
+    const result = try fmt.bufPrintZ(
+        &buf,
+        "[{d}:{d:0>2}:{d:0>2}]",
+        .{ hours, minutes, seconds },
+    );
+    return result;
+}
+
+const UiMode = enum {
+    stdout,
+    direct,
+    notcurses,
+};
+
+const Ui = struct {
+    const Self = @This();
+    printFn: fn (ui: Self, str: [:0]const u8) anyerror!void,
+    printCommentFn: fn (ui: Self, comment: CommentResult) anyerror!void,
+    sleepLoopFn: fn (ui: Self, ms: u64) anyerror!void,
+    deinitFn: fn (ui: Self) void,
+
+    pub fn print(ui: Self, str: [:0]const u8) anyerror!void {
+        return try ui.printFn(ui, str);
+    }
+
+    pub fn printComment(ui: Self, comment: CommentResult) anyerror!void {
+        return try ui.printCommentFn(ui, comment);
+    }
+
+    pub fn sleepLoop(ui: Self, ms: u64) anyerror!void {
+        return try ui.sleepLoopFn(ui, ms);
+    }
+
+    pub fn deinit(ui: Self) void {
+        ui.deinitFn(ui);
+    }
+};
 
 pub fn main() anyerror!void {
+    // dd("\n==========================\n", .{});
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
     const stdout = std.io.getStdOut().outStream();
@@ -37,7 +257,7 @@ pub fn main() anyerror!void {
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     // var mode_default = ;
-    var output_mode: []const u8 = "stdout";
+    var output_mode: UiMode = .stdout;
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
 
@@ -61,22 +281,18 @@ pub fn main() anyerror!void {
                 warn("Option '-output-mode' requires one these value: stdout, direct, notcurses", .{});
                 return;
             };
-            var valid_values = [_][]const u8{ "stdout", "direct", "notcurses" };
-            var has_valid_value = false;
-            for (valid_values) |val| {
-                if (std.mem.eql(u8, val, arg_value)) {
-                    has_valid_value = true;
-                    break;
-                }
-            }
-            if (has_valid_value) {
-                output_mode = arg_value;
+            if (std.mem.eql(u8, "stdout", arg_value)) {
+                output_mode = .stdout;
+            } else if (std.mem.eql(u8, "direct", arg_value)) {
+                output_mode = .direct;
+            } else if (std.mem.eql(u8, "notcurses", arg_value)) {
+                output_mode = .notcurses;
             } else {
                 warn("Option '-output-mode' contains invalid value '{s}'\nValid '-output-mode' values: {s}, {s}, {s}", .{
                     arg_value,
-                    valid_values[0],
-                    valid_values[1],
-                    valid_values[2],
+                    "stdout",
+                    "direct",
+                    "notcurses",
                 });
                 return;
             }
@@ -139,15 +355,37 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
+    output_mode = .notcurses;
+    var ui = blk: {
+        switch (output_mode) {
+            .stdout, .direct => {
+                var ui_mode = try UiStdout.init();
+                break :blk &ui_mode.ui;
+            },
+            // .direct => {
+            //     //
+            // },
+            .notcurses => {
+                var ui_mode = try UiNotCurses.init();
+                break :blk &ui_mode.ui;
+            },
+        }
+    };
+
+    defer ui.deinit();
+
+    // try ui.print("test\n");
     while (true) {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
 
         chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
-        while (try comments.nextCommentString(chat_time)) |str| {
-            try stdout.writeAll(str);
+        while (comments.getNextComment(chat_time)) |comment| {
+            // var s = try std.cstr.addNullByte(allocator, comments.comments.items[1].body);
+            try ui.printComment(comment);
         }
 
+        // try ui.print("test past block\n");
         switch (download.state) {
             .Using => {
                 if (((!comments.has_prev and mpv.video_time < first_offset) or
@@ -208,7 +446,8 @@ pub fn main() anyerror!void {
             }
             break :blk default_delay_ns;
         };
-        std.time.sleep(delay_ns);
+
+        try ui.sleepLoop(delay_ns);
     }
     th.wait();
 }
