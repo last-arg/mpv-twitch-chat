@@ -13,24 +13,6 @@ const nc = @cImport({
 
 // pub const log_level: std.log.Level = .info;
 
-pub const Category = enum {
-    LC_ALL,
-    LC_ADDRESS,
-    LC_COLLATE,
-    LC_CTYPE,
-    LC_IDENTIFICATION,
-    LC_MEASUREMENT,
-    LC_MESSAGES,
-    LC_MONETARY,
-    LC_NAME,
-    LC_NUMERIC,
-    LC_PAPER,
-    LC_TELEPHONE,
-    LC_TIME,
-};
-
-pub extern "c" fn setlocale(category: c_int, format: [*:0]const u8) ?[*:0]const u8;
-
 // Notcurses plane transparent background example
 // https://github.com/dankamongmen/notcurses/blob/0aa060b9f12402e73e3d956360b3bcce34a1971e/tests/reel.cpp#L287
 
@@ -454,18 +436,15 @@ pub const NotCurses = struct {
     }
 };
 
-const NcDirect = struct {
+const Direct = struct {
     // TODO?: make cursor functions into one function with enum parameter?
+    const T = nc.struct_ncdirect;
     const Struct = nc.struct_ncdirect;
     const Align = nc.ncalign_e;
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
 
     pub fn init() !*Struct {
-        var locale = setlocale(@enumToInt(Category.LC_ALL), "");
-        if (locale) |l| {
-            warn("locale: {}\n", .{l});
-        }
         var n = nc.ncdirect_init(null, nc.stdout, nc.NCOPTION_INHIBIT_SETLOCALE) orelse {
             log.warn("Failed to initialize notcurses direct", .{});
             return error.NcDirectInitFailed;
@@ -556,10 +535,6 @@ const NcDirect = struct {
 };
 
 pub fn testInit() !void {
-    var locale = setlocale(@enumToInt(Category.LC_ALL), "") orelse {
-        return error.SetLocaleFailed;
-    };
-
     var options: Options = .{
         .termtype = 0,
         .renderfp = 0,

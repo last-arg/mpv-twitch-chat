@@ -46,7 +46,7 @@ const UiNotCurses = struct {
         const n = try NotCurses.init(nc_opts);
         return UiNotCurses{
             .nc = n,
-            .text_plane = try createTextArea(n),
+            .text_plane = try createTextPlane(n),
             .ui = Ui{
                 .deinitFn = deinit,
                 .printFn = print,
@@ -92,7 +92,7 @@ const UiNotCurses = struct {
         }
     }
 
-    fn createTextArea(n: *NotCurses.T) !*Plane.T {
+    fn createTextPlane(n: *NotCurses.T) !*Plane.T {
         const std_plane = try NotCurses.stdplane(n);
         var cols: usize = 0;
         var rows: usize = 0;
@@ -344,16 +344,17 @@ pub fn main() anyerror!void {
     // TODO: download next comments right now
     var comments_new: Comments = try Comments.init(allocator, comments_delay);
 
+    var mutex = std.Mutex{};
     var th: *Thread = undefined;
     var download = Download{
         .allocator = allocator,
         .data = "",
-        .state = .Downloading,
+        .state = .Using,
         .hostname = g_host,
         .port = g_port,
         .path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset }),
+        .lock = &mutex,
     };
-    th = try Thread.spawn(&download, Download.download);
 
     // TODO?: Implement video state detection: playing or paused
     // try mpv.requestProperty("playback-time");
@@ -362,7 +363,7 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
-    output_mode = .notcurses;
+    // output_mode = .notcurses;
     var ui = blk: {
         switch (output_mode) {
             .stdout, .direct => {
@@ -381,27 +382,30 @@ pub fn main() anyerror!void {
 
     defer ui.deinit();
 
-    // try ui.print("test\n");
     while (true) {
         try mpv.requestProperty("playback-time");
         try mpv.readResponses();
 
         chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
         while (comments.getNextComment(chat_time)) |comment| {
-            // var s = try std.cstr.addNullByte(allocator, comments.comments.items[1].body);
             try ui.printComment(comment);
         }
 
-        // try ui.print("test past block\n");
         switch (download.state) {
             .Using => {
                 if (((!comments.has_prev and mpv.video_time < first_offset) or
                     (!comments.has_next and mpv.video_time > last_offset)) and
                     mpv.video_time > (last_offset - download_time))
                 {
-                    log.info("Start downloading comments", .{});
+                    log.info("Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
+                    const offset = blk: {
+                        if (mpv.video_time < first_offset or mpv.video_time > last_offset) {
+                            break :blk chat_time;
+                        }
+                        break :blk last_offset - comments_delay;
+                    };
                     download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
                     th = try Thread.spawn(&download, Download.download);
                     continue;
@@ -409,13 +413,15 @@ pub fn main() anyerror!void {
             },
             .Finished => {
                 log.info("Finished downloading comments", .{});
+                th.wait();
                 try comments_new.parse(download.data);
                 download.freeData();
                 download.state = .Ready;
+                const first_new = comments_new.offsets.items[0];
+                const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 continue;
             },
             .Ready => {
-                chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
                 const first_new = comments_new.offsets.items[0];
                 const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 if (chat_time > first_new and chat_time < last_new) {
@@ -427,17 +433,13 @@ pub fn main() anyerror!void {
                     first_offset = first_new;
                     last_offset = last_new;
                     download.state = .Using;
-                } else {
-                    const first = comments.offsets.items[0];
-                    const last = comments.offsets.items[comments.offsets.items.len - 1];
-                    if (last <= chat_time or first >= chat_time) {
-                        comments_new.comments.items.len = 0;
-                        comments_new.offsets.items.len = 0;
-                        download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
-                        th = try Thread.spawn(&download, Download.download);
-                    }
+                } else if (last_offset <= chat_time or first_new >= chat_time) {
+                    log.info("Comments out of range. Downloading new comments", .{});
+                    comments_new.comments.items.len = 0;
+                    comments_new.offsets.items.len = 0;
+                    download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
+                    th = try Thread.spawn(&download, Download.download);
                 }
-                // th.wait();
             },
             .Downloading => {},
         }
@@ -456,7 +458,6 @@ pub fn main() anyerror!void {
 
         try ui.sleepLoop(delay_ns);
     }
-    th.wait();
 }
 
 const Download = struct {
@@ -472,19 +473,23 @@ const Download = struct {
         Ready,
     },
     data: []const u8,
+    lock: *std.Mutex,
 
-    pub fn download(self: *Self) !void {
-        self.state = .Downloading;
-        self.data = try twitch.httpsRequest(
-            self.allocator,
-            self.hostname,
-            self.port,
-            self.path,
+    pub fn download(dl: *Self) !void {
+        const held = dl.lock.acquire();
+        defer held.release();
+
+        dl.state = .Downloading;
+        dl.data = try twitch.httpsRequest(
+            dl.allocator,
+            dl.hostname,
+            dl.port,
+            dl.path,
         );
-        self.state = .Finished;
+        dl.state = .Finished;
     }
 
-    pub fn freeData(self: Self) void {
-        self.allocator.free(self.data);
+    pub fn freeData(dl: Self) void {
+        dl.allocator.free(dl.data);
     }
 };
