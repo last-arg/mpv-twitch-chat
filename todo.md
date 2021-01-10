@@ -1,5 +1,4 @@
 Features:
-[ ] Add output_mode direct (notcurses lib)
 [ ] Track mpv video state to avoid unnecessary downloads
 
 Improve:

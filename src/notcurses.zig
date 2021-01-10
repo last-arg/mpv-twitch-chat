@@ -436,50 +436,26 @@ pub const NotCurses = struct {
     }
 };
 
-const Direct = struct {
+pub const Direct = struct {
+    pub const Self = @This();
     // TODO?: make cursor functions into one function with enum parameter?
-    const T = nc.struct_ncdirect;
+    pub const T = nc.struct_ncdirect;
     const Struct = nc.struct_ncdirect;
     const Align = nc.ncalign_e;
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
+    pub var stdout: *nc.FILE = undefined;
 
-    pub fn init() !*Struct {
+    pub fn init() !*T {
+        Self.stdout = nc.stdout;
+
         var n = nc.ncdirect_init(null, nc.stdout, nc.NCOPTION_INHIBIT_SETLOCALE) orelse {
             log.warn("Failed to initialize notcurses direct", .{});
             return error.NcDirectInitFailed;
         };
 
-        warn("can open images: {}\n", .{nc.ncdirect_canopen_images(n)});
-
-        renderImage(
-            n,
-            "./tmp/kappa.png",
-            Align.NCALIGN_LEFT,
-            Blitter.NCBLIT_DEFAULT,
-            nc.ncscale_e.NCSCALE_NONE,
-        );
-        flush(n);
-        var f: c_int = 0;
-        if (nc.ncdirect_styles_on(n, nc.NCSTYLE_STANDOUT) != 0) {
-            log.warn("ncdirect_styles_on failed", .{});
-        }
-        if (nc.ncdirect_fg_rgb(n, 0x0339dc) != 0) {
-            log.warn("failed", .{});
-        }
-
         // var r = std.c.printf("test\n");
-
         // try std.io.cWriter(@ptrCast(*std.c.FILE, nc.stdout)).print("test this more {}\n", .{34});
-        if (nc.ncdirect_fg_default(n) != 0) {
-            log.warn("failed", .{});
-        }
-        if (nc.ncdirect_styles_off(n, nc.NCSTYLE_STANDOUT) != 0) {
-            log.warn("failed", .{});
-        }
-        // try std.io.cWriter(@ptrCast(*std.c.FILE, nc.stdout)).print("test this more {}\n", .{34});
-        // r = std.c.printf("test\n");
-        // warn("test\n", .{});
         return n;
     }
 
@@ -496,6 +472,14 @@ const Direct = struct {
         if (result < 0) {
             log.warn("ncdirect_stop failed", .{});
         }
+    }
+
+    pub fn stylesOn(d: *T, styles: usize) isize {
+        return nc.ncdirect_styles_on(d, @intCast(c_uint, styles));
+    }
+
+    pub fn stylesOff(d: *T, styles: usize) isize {
+        return nc.ncdirect_styles_off(d, @intCast(c_uint, styles));
     }
 
     pub fn cursorUp(n: *Struct, nr: usize) void {
@@ -533,190 +517,3 @@ const Direct = struct {
         }
     }
 };
-
-pub fn testInit() !void {
-    var options: Options = .{
-        .termtype = 0,
-        .renderfp = 0,
-        // .loglevel = nc.ncloglevel_e.NCLOGLEVEL_TRACE,
-        // .loglevel = nc.ncloglevel_e.NCLOGLEVEL_DEBUG,
-        .loglevel = nc.ncloglevel_e.NCLOGLEVEL_SILENT,
-        .margin_t = 0,
-        .margin_r = 0,
-        .margin_b = 0,
-        .margin_l = 0,
-        .flags = 0,
-    };
-    // options.flags |= nc.NCOPTION_NO_ALTERNATE_SCREEN;
-    // options.flags |= nc.NCOPTION_SUPPRESS_BANNERS;
-    // options.flags |= nc.NCPLOT_OPTION_LABELTICKSD | nc.NCPLOT_OPTION_PRINTSAMPLE;
-
-    var n = nc.notcurses_init(@ptrCast([*]const Options, &options), nc.stdout) orelse {
-        log.warn("Failed to initialize notcurses", .{});
-        return error.NotCursesInitFailed;
-    };
-
-    // var inputs = Inputs{
-    //     .nc = n,
-    // };
-    // var inputs_thread = try Thread.spawn(&inputs, Inputs.init);
-    // defer {
-    //     inputs.deinit();
-    //     inputs_thread.wait();
-    // }
-
-    const dim = 10;
-
-    // standard plane always exists
-    var plane = try stdplane(n);
-    var cols: usize = 0;
-    var rows: usize = 0;
-    Plane.dimYX(plane, &rows, &cols);
-
-    // planeResetBackground(plane);
-    // planeSetScrolling(plane, true);
-
-    // reel plane (scrolling)
-    var reel: *Reel.T = undefined;
-    defer Reel.destroy(reel);
-    {
-        var channels: u64 = 0;
-        // NOTE: function 'channels_set_bg_alpha' will break if cimport is rebuilt
-        _ = nc.channels_set_bg_alpha(&channels, nc.CELL_ALPHA_TRANSPARENT);
-        var plane_2 = try Plane.create(plane, rows, cols);
-
-        // Plane.setScrolling(plane_2, true);
-        // Plane.moveBottom(plane_2);
-        // planeResetBackground(plane_2);
-        _ = nc.ncplane_set_base(plane_2, "", 0, channels);
-        var reel_opts = Reel.Options{
-            // .bordermask = nc.NCBOXMASK_LEFT,
-            .bordermask = nc.NCBOXMASK_TOP | nc.NCBOXMASK_BOTTOM | nc.NCBOXMASK_LEFT,
-            .borderchan = 0,
-            // .tabletmask = nc.NCBOXMASK_LEFT,
-            .tabletmask = nc.NCBOXMASK_TOP | nc.NCBOXMASK_BOTTOM | nc.NCBOXMASK_LEFT,
-            .tabletchan = 0,
-            .focusedchan = 0,
-            .flags = 0,
-        };
-        reel_opts.flags |= nc.NCREEL_OPTION_INFINITESCROLL;
-        reel_opts.flags |= nc.NCREEL_OPTION_CIRCULAR;
-        reel = try Reel.create(plane, reel_opts);
-
-        var reel_plane = Reel.plane(reel);
-        var reel_cols: usize = 0;
-        var reel_rows: usize = 0;
-        Plane.dimYX(reel_plane, &reel_rows, &reel_cols);
-        warn("REEL PLANE: {} {}\n", .{ reel_rows, reel_cols });
-
-        var j: usize = 0;
-        while (j < 4) : (j += 1) {
-            var tablet_1 = try Reel.add(
-                reel,
-                null, // next
-                null, // prev
-                null, // Use default callback fn
-                null,
-            );
-
-            // var tablet_1_plane = try Tablet.plane(tablet_1);
-
-            // planePutText(tablet_1_plane, "tablet_1 plane text\n");
-            // planePutstrYX(tablet_1_plane, "test this\n");
-        }
-
-        // Reel.redraw(reel);
-        // var rr = Reel.next(reel);
-        // _ = Reel.next(reel);
-        // _ = Reel.next(reel);
-        // _ = Reel.next(reel);
-
-        Plane.dimYX(reel_plane, &reel_rows, &reel_cols);
-        warn("REEL PLANE: {} {}\n", .{ reel_rows, reel_cols });
-
-        // var r_del = nc.ncreel_del(reel, tablet_1);
-        // warn("=========================\n", .{});
-        // pub extern fn ncreel_add(nr: ?*struct_ncreel, after: ?*struct_nctablet, before: ?*struct_nctablet, cb: tabletcb, @"opaque": ?*c_void) ?*struct_nctablet;
-    }
-
-    // resize and move plane if necessary
-    // {
-    //     var plane_2 = try planeCreate(plane, rows, cols);
-    //     planeResetBackground(plane_2);
-    //     var buf: [128]u8 = undefined;
-    //     const fmt_test = "test {}\n";
-    //     const fmt_loc = "row: {} col: {}\n";
-    //     var loc_col: usize = 0;
-    //     var loc_row: usize = 0;
-    //     const len: usize = 130;
-    //     var i: usize = 0;
-    //     var rel_pos: c_int = 1;
-    //     var new_height: c_int = 54;
-    //     while (i <= len) : (i += 1) {
-    //         planeCursorYX(plane_2, &loc_row, &loc_col);
-    //         var loc_str = try std.fmt.bufPrintZ(&buf, fmt_loc, .{ loc_row, loc_col });
-    //         planePutText(plane_2, loc_str);
-
-    //         if (loc_row >= 53) {
-    //             _ = nc.ncplane_move_yx(plane_2, rel_pos, 0);
-    //             rel_pos -= 1;
-    //             new_height += 1;
-    //             // TODO: should be able to use one function - ncplane_resize_simple
-    //             // Might not be able to because order of operations. Maybe if block's
-    //             // condition changes.
-    //             _ = nc.ncplane_resize_simple(plane_2, new_height, @intCast(c_int, cols));
-    //         }
-    //         // var path = try std.fmt.bufPrintZ(&buf, fmt_test, .{i});
-    //         // planePutText(plane, path);
-    //     }
-
-    //     planeDimYX(plane_2, &rows, &cols);
-    //     warn("ROWi {} {}\n", .{ rows, cols });
-    // }
-
-    // planePutText(plane, "|||| MORE TEST asldkj lksadjf klsdj flksaj flksjd fskldjf lsk fjlsf jlsf jslk fjlks jdf\n");
-
-    // {
-    //     var img = nc.ncvisual_from_file("./tmp/kappa.png") orelse {
-    //         return error.NcVisualFromFileFailed;
-    //     };
-
-    //     // _ = nc.ncvisual_resize(img, 12, 12);
-
-    //     // ncvisual_options
-    //     var img_options = nc.ncvisual_options{
-    //         .n = plane,
-    //         .scaling = Scale.NCSCALE_NONE_HIRES,
-    //         .y = 20,
-    //         .x = 0,
-    //         .begy = 0,
-    //         .begx = 0,
-    //         .leny = 0,
-    //         .lenx = 0,
-    //         .blitter = Blitter.NCBLIT_DEFAULT,
-    //         .flags = 0,
-    //     };
-
-    //     const img_plane = nc.ncvisual_render(n, img, @ptrCast([*]nc.ncvisual_options, &img_options)) orelse {
-    //         return error.NcVisualRenderFailed;
-    //     };
-    //     // _ = nc.ncplane_resize_simple(img_plane, dim, dim);
-    // }
-
-    // warn("x: {}\n", .{x});
-    // warn("y: {}\n", .{y});
-
-    // rbgBackground(plane);
-    var reel_input: nc.ncinput = undefined;
-    while (true) {
-        _ = nc.notcurses_render(n);
-        const char_code = getcNblock(n);
-        if (char_code == 'q') {
-            break;
-        }
-        std.time.sleep(std.time.ns_per_ms * 500);
-    }
-
-    warn("EXIT APP\n", .{});
-    return n;
-}

@@ -31,6 +31,7 @@ const debug = true;
 
 const nc = @import("notcurses.zig");
 const NotCurses = nc.NotCurses;
+const Direct = nc.Direct;
 const Plane = nc.Plane;
 const Pile = nc.Pile;
 const Style = nc.Style;
@@ -224,6 +225,63 @@ pub fn secondsToTimeString(buf: []u8, comment_seconds: f64) ![:0]u8 {
     return result;
 }
 
+const UiDirect = struct {
+    const Self = @This();
+    const stdout = std.io.getStdOut().outStream();
+    const ESC_CHAR = [_]u8{27};
+    const BOLD = ESC_CHAR ++ "[1m";
+    const RESET = ESC_CHAR ++ "[0m";
+
+    direct: *Direct.T,
+    ui: Ui,
+
+    pub fn init() !Self {
+        return Self{
+            .direct = try Direct.init(),
+            .ui = Ui{
+                .deinitFn = deinit,
+                .printFn = print,
+                .printCommentFn = printComment,
+                .sleepLoopFn = sleepLoop,
+            },
+        };
+    }
+
+    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+        std.time.sleep(ns);
+    }
+
+    pub fn printComment(ui: Ui, c: CommentResult) !void {
+        const self = @fieldParentPtr(Self, "ui", &ui);
+
+        var time_buf: [16]u8 = undefined;
+        const time_str = try secondsToTimeString(&time_buf, c.time);
+        try ui.print(time_str);
+        var buf: [1024]u8 = undefined; // NOTE: IRC max message length is 512 + extra
+        const result = try fmt.bufPrintZ(
+            &buf,
+            " {s}: ",
+            .{c.name},
+        );
+        _ = Direct.stylesOn(self.direct, Style.bold);
+        try ui.print(result);
+
+        _ = Direct.stylesOff(self.direct, Style.bold);
+
+        const body = try fmt.bufPrintZ(&buf, "{s}\n", .{c.body});
+        try ui.print(body);
+    }
+
+    pub fn print(ui: Ui, str: [:0]const u8) !void {
+        try std.io.cWriter(@ptrCast(*std.c.FILE, Direct.stdout)).print("{s}", .{str});
+    }
+
+    pub fn deinit(ui: Ui) void {
+        const self = @fieldParentPtr(Self, "ui", &ui);
+        Direct.stop(self.direct);
+    }
+};
+
 const UiMode = enum {
     stdout,
     direct,
@@ -363,16 +421,17 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
-    // output_mode = .notcurses;
+    output_mode = .direct;
     var ui = blk: {
         switch (output_mode) {
-            .stdout, .direct => {
+            .stdout => {
                 var ui_mode = try UiStdout.init();
                 break :blk &ui_mode.ui;
             },
-            // .direct => {
-            //     //
-            // },
+            .direct => {
+                var ui_mode = try UiDirect.init();
+                break :blk &ui_mode.ui;
+            },
             .notcurses => {
                 var ui_mode = try UiNotCurses.init();
                 break :blk &ui_mode.ui;
