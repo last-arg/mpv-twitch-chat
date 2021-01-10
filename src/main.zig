@@ -164,7 +164,7 @@ const UiNotCurses = struct {
 
 const UiStdout = struct {
     const Self = @This();
-    const stdout = std.io.getStdOut().outStream();
+    const stdout = std.io.getStdOut().writer();
     const ESC_CHAR = [_]u8{27};
     const BOLD = ESC_CHAR ++ "[1m";
     const RESET = ESC_CHAR ++ "[0m";
@@ -258,14 +258,9 @@ const UiDirect = struct {
         const time_str = try secondsToTimeString(&time_buf, c.time);
         try ui.print(time_str);
         var buf: [1024]u8 = undefined; // NOTE: IRC max message length is 512 + extra
-        const result = try fmt.bufPrintZ(
-            &buf,
-            " {s}: ",
-            .{c.name},
-        );
+        const result = try fmt.bufPrintZ(&buf, " {s}: ", .{c.name});
         _ = Direct.stylesOn(self.direct, Style.bold);
         try ui.print(result);
-
         _ = Direct.stylesOff(self.direct, Style.bold);
 
         const body = try fmt.bufPrintZ(&buf, "{s}\n", .{c.body});
@@ -273,7 +268,7 @@ const UiDirect = struct {
     }
 
     pub fn print(ui: Ui, str: [:0]const u8) !void {
-        try std.io.cWriter(@ptrCast(*std.c.FILE, Direct.stdout)).print("{s}", .{str});
+        try std.io.cWriter(@ptrCast(*std.c.FILE, Direct.stdout)).writeAll(str);
     }
 
     pub fn deinit(ui: Ui) void {
@@ -421,7 +416,7 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
-    output_mode = .direct;
+    // output_mode = .direct;
     var ui = blk: {
         switch (output_mode) {
             .stdout => {
