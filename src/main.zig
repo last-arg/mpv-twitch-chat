@@ -106,37 +106,44 @@ const UiNotCurses = struct {
         var buf: [512]u8 = undefined; // NOTE: IRC max message length is 512 + extra
 
         Plane.setStyles(self.text_plane, Style.none);
-
-        const time_str = try secondsToTimeString(c.time);
+        const time_str = try secondsToTimeString(&buf, c.time);
         try ui.print(time_str);
 
-        Plane.setStyles(self.text_plane, Style.bold);
+        Plane.stylesOn(self.text_plane, Style.bold);
         const name_str = try fmt.bufPrintZ(&buf, " {s}: ", .{c.name});
         try ui.print(name_str);
+        Plane.stylesOff(self.text_plane, Style.bold);
 
-        Plane.setStyles(self.text_plane, Style.none);
         const body_str = try fmt.bufPrintZ(&buf, "{s}\n", .{c.body});
         try ui.print(body_str);
-
-        Plane.setStyles(self.text_plane, Style.none);
     }
 
     pub fn print(ui: Ui, str: [:0]const u8) !void {
+        if (str.len == 0) return;
         const self = @fieldParentPtr(Self, "ui", &ui);
         var lines_added: usize = 0;
-        var text = Plane.putText(self.text_plane, str);
 
-        // dd("##{}##\n", .{text});
-        // dd("##{s}##\n", .{str});
         var cols: usize = 0;
         var rows: usize = 0;
         Plane.dimYX(self.text_plane, &rows, &cols);
+        var row_curr: usize = 0;
+        var col_curr: usize = 0;
+        Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
 
-        while (text.result < 0) {
-            const new_rows = rows + 1;
-            try Plane.resizeSimple(self.text_plane, new_rows, cols);
-            rows = new_rows;
-            text = Plane.putText(self.text_plane, str[text.bytes..]);
+        var result = Plane.putText(self.text_plane, str);
+
+        var bytes: usize = result.bytes;
+        while (result.result == -1) {
+            rows += 1;
+            try Plane.resizeSimple(self.text_plane, rows, cols);
+            _ = Plane.cursorMoveYX(
+                self.text_plane,
+                @intCast(isize, row_curr),
+                @intCast(isize, col_curr),
+            );
+            result = Plane.putText(self.text_plane, str[bytes..]);
+            Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
+            bytes += result.bytes;
             lines_added += 1;
         }
 
@@ -179,7 +186,8 @@ const UiStdout = struct {
     }
 
     pub fn printComment(ui: Ui, c: CommentResult) !void {
-        const time_str = try secondsToTimeString(c.time);
+        var time_buf: [16]u8 = undefined;
+        const time_str = try secondsToTimeString(&time_buf, c.time);
         var buf: [2048]u8 = undefined; // NOTE: IRC max message length is 512 + extra
         const result = try fmt.bufPrintZ(
             buf[0..],
@@ -196,7 +204,7 @@ const UiStdout = struct {
     pub fn deinit(ui: Ui) void {}
 };
 
-pub fn secondsToTimeString(comment_seconds: f64) ![:0]u8 {
+pub fn secondsToTimeString(buf: []u8, comment_seconds: f64) ![:0]u8 {
     const hours = @floatToInt(u32, comment_seconds / (60 * 60));
     const minutes = @floatToInt(
         u32,
@@ -208,9 +216,8 @@ pub fn secondsToTimeString(comment_seconds: f64) ![:0]u8 {
         (comment_seconds - @intToFloat(f64, hours * 60 * 60) - @intToFloat(f64, minutes * 60)),
     );
 
-    var buf: [16]u8 = undefined;
     const result = try fmt.bufPrintZ(
-        &buf,
+        buf,
         "[{d}:{d:0>2}:{d:0>2}]",
         .{ hours, minutes, seconds },
     );

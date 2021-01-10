@@ -232,6 +232,10 @@ pub const Plane = struct {
         return .{ .bytes = bytes, .result = @intCast(isize, result) };
     }
 
+    pub fn putStr(p: *T, str: [:0]const u8) isize {
+        return nc.ncplane_putstr(p, @ptrCast([*]const u8, str));
+    }
+
     pub fn resizeSimple(p: *T, rows: usize, cols: usize) !void {
         if (nc.ncplane_resize_simple(p, @intCast(c_int, rows), @intCast(c_int, cols)) < 0) {
             return error.PlaneResizeSimpleFailed;
@@ -260,8 +264,37 @@ pub const Plane = struct {
         col.* = @intCast(usize, c);
     }
 
+    pub fn cursorMoveYX(p: *T, row: isize, col: isize) isize {
+        return nc.ncplane_cursor_move_yx(p, @intCast(c_int, row), @intCast(c_int, col));
+    }
+
     pub fn setStyles(p: *T, styles: usize) void {
         nc.ncplane_set_styles(p, @intCast(c_uint, styles));
+    }
+
+    pub fn stylesOn(p: *T, styles: usize) void {
+        nc.ncplane_styles_on(p, @intCast(c_uint, styles));
+    }
+
+    pub fn stylesOff(p: *T, styles: usize) void {
+        nc.ncplane_styles_off(p, @intCast(c_uint, styles));
+    }
+
+    pub fn vprintfYX(p: *T, row: isize, col: isize, format: [:0]const u8) isize {
+        var va_list = nc.struct___va_list_tag{
+            .gp_offset = 0,
+            .fp_offset = 0,
+            .overflow_arg_area = null,
+            .reg_save_area = null,
+        };
+        const result = nc.ncplane_vprintf_yx(
+            p,
+            @intCast(c_int, row),
+            @intCast(c_int, col),
+            @ptrCast([*]const u8, format),
+            &va_list,
+        );
+        return @intCast(isize, result);
     }
 };
 
@@ -315,8 +348,8 @@ pub const NotCurses = struct {
     // TODO: flush stdin before start of init or/and end of init
     pub fn init(opts: ?Options) !*Struct {
         var options = opts orelse default_options;
-        // options.flags |= nc.NCOPTION_NO_ALTERNATE_SCREEN;
-        // options.flags |= nc.NCOPTION_SUPPRESS_BANNERS;
+        options.flags |= nc.NCOPTION_NO_ALTERNATE_SCREEN;
+        options.flags |= nc.NCOPTION_SUPPRESS_BANNERS;
         // options.flags |= nc.NCPLOT_OPTION_LABELTICKSD | nc.NCPLOT_OPTION_PRINTSAMPLE;
         const n = nc.notcurses_init(&options, nc.stdout) orelse {
             log.warn("Failed to initialize notcurses", .{});
