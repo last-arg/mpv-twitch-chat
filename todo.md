@@ -7,3 +7,4 @@ Improve:
 [ ] UI (Notcurses): add scroll events
 
 Bugs:
+[ ] UiNotCurses clean text area/plane on init

@@ -340,6 +340,14 @@ pub const NotCurses = struct {
         return n;
     }
 
+    pub fn cursorDisable(n: *T) void {
+        _ = nc.notcurses_cursor_disable(n);
+    }
+
+    pub fn cursorEnable(n: *T) void {
+        _ = nc.notcurses_cursor_enable(n, -1, -1);
+    }
+
     pub fn render(n: *T) !void {
         if (nc.notcurses_render(n) < 0) {
             log.warn("Notcurses.render failed", .{});
