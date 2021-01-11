@@ -33,7 +33,8 @@ pub const UiNotCurses = struct {
     }
 
     pub fn sleepLoop(ui: Ui, ns: u64) !void {
-        const input_sleep_ns = time.ns_per_ms * 60;
+        const input_inactive_ns = time.ns_per_ms * 120;
+        const input_active_ns = time.ns_per_ms * 60;
         const self = @fieldParentPtr(Self, "ui", &ui);
         var col_curr: isize = 0;
         var row_curr: isize = 0;
@@ -41,6 +42,7 @@ pub const UiNotCurses = struct {
         const start_time = timer.read();
 
         while (true) {
+            var input_update_ns: u64 = input_inactive_ns;
             var char_code: u32 = 0;
 
             while (char_code != std.math.maxInt(u32)) {
@@ -52,10 +54,12 @@ pub const UiNotCurses = struct {
                     // Makes sure that cursor is visible and works
                     std.process.exit(0);
                 } else if (char_code == 'j') {
+                    input_update_ns = input_active_ns;
                     Plane.getYX(self.text_plane, &row_curr, &col_curr);
                     // TODO: don't scroll past panel top
                     try Plane.moveYX(self.text_plane, row_curr - 1, col_curr);
                 } else if (char_code == 'k') {
+                    input_update_ns = input_active_ns;
                     Plane.getYX(self.text_plane, &row_curr, &col_curr);
                     // TODO: don't scroll past panel bottom
                     try Plane.moveYX(self.text_plane, row_curr + 1, col_curr);
@@ -67,7 +71,7 @@ pub const UiNotCurses = struct {
             char_code = 0;
             try NotCurses.render(self.nc);
             if (timer.read() > ns) break;
-            std.time.sleep(input_sleep_ns);
+            std.time.sleep(input_update_ns);
         }
     }
 
