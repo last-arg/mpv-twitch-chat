@@ -104,11 +104,13 @@ pub const UiNotCurses = struct {
     pub fn print(ui: Ui, str: [:0]const u8) !void {
         if (str.len == 0) return;
         const self = @fieldParentPtr(Self, "ui", &ui);
-        var lines_added: usize = 0;
 
         var cols: usize = 0;
         var rows: usize = 0;
-        Plane.dimYX(self.text_plane, &rows, &cols);
+        // Plane.dimYX(self.text_plane, &rows, &cols);
+        const std_plane = try NotCurses.stdplane(self.nc);
+        Plane.dimYX(std_plane, &rows, &cols);
+
         var row_curr: usize = 0;
         var col_curr: usize = 0;
         Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
@@ -117,8 +119,10 @@ pub const UiNotCurses = struct {
 
         var bytes: usize = result.bytes;
         while (result.result == -1) {
-            rows += 1;
-            try Plane.resizeSimple(self.text_plane, rows, cols);
+            // Use row_curr to calculate new plane height.
+            // plane_current_height = row_curr + 1
+            const new_height = row_curr + 12;
+            try Plane.resizeSimple(self.text_plane, new_height, cols);
             _ = Plane.cursorMoveYX(
                 self.text_plane,
                 @intCast(isize, row_curr),
@@ -127,13 +131,18 @@ pub const UiNotCurses = struct {
             result = Plane.putText(self.text_plane, str[bytes..]);
             Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
             bytes += result.bytes;
-            lines_added += 1;
         }
 
         var row: isize = 0;
         var col: isize = 0;
         Plane.getYX(self.text_plane, &row, &col);
-        try Plane.moveYX(self.text_plane, row - @intCast(isize, lines_added), col);
+        Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
+        // Assumes row is negative
+        const last_row = @intCast(isize, rows) - 1 + (-row);
+        if (row_curr > last_row) {
+            const move_row = @intCast(isize, row_curr) - last_row;
+            try Plane.moveYX(self.text_plane, row - move_row, col);
+        }
 
         try NotCurses.render(self.nc);
     }
