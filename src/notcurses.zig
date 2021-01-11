@@ -290,30 +290,6 @@ pub const NotCurses = struct {
     const Cell = nc.nccell;
     const Input = nc.ncinput;
 
-    const Inputs = struct {
-        const Self = @This();
-        done: bool = false,
-        nc: *Struct,
-
-        // nc: *Struct,
-        pub fn init(inputs: *Self) void {
-            while (!inputs.done) {
-                var n_input: Input = undefined;
-                const char_code = getcBlocking(inputs.nc, &n_input);
-                // warn("nc_input: {}\n", .{n_input});
-                if (char_code == 'q') {
-                    inputs.done = true;
-                    break;
-                }
-                // std.time.sleep(std.time.ns_per_s);
-            }
-        }
-
-        pub fn deinit(inputs: *Self) void {
-            inputs.done = true;
-        }
-    };
-
     pub const default_options = Options{
         .termtype = null,
         .renderfp = null, // mostly for debugging
@@ -330,8 +306,8 @@ pub const NotCurses = struct {
     // TODO: flush stdin before start of init or/and end of init
     pub fn init(opts: ?Options) !*Struct {
         var options = opts orelse default_options;
-        options.flags |= nc.NCOPTION_NO_ALTERNATE_SCREEN;
-        options.flags |= nc.NCOPTION_SUPPRESS_BANNERS;
+        // options.flags |= nc.NCOPTION_NO_ALTERNATE_SCREEN;
+        // options.flags |= nc.NCOPTION_SUPPRESS_BANNERS;
         // options.flags |= nc.NCPLOT_OPTION_LABELTICKSD | nc.NCPLOT_OPTION_PRINTSAMPLE;
         const n = nc.notcurses_init(&options, nc.stdout) orelse {
             log.warn("Failed to initialize notcurses", .{});
