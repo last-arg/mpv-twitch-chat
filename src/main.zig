@@ -3,7 +3,7 @@ const warn = std.debug.warn;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
-const log = std.log.default;
+// const log = std.log.default;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
 const CommentResult = @import("comments.zig").CommentResult;
@@ -16,6 +16,28 @@ const dd = @import("debug.zig").ttyWarn;
 // pub const io_mode = .evented;
 
 pub const log_level: std.log.Level = .info;
+
+var log_file_exists = false;
+const log_file_path = "tmp/log";
+pub fn log(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const prefix = "[" ++ @tagName(level) ++ "] ";
+    var log_file: std.fs.File = undefined;
+    defer log_file.close();
+    if (!log_file_exists) {
+        log_file = std.fs.cwd().createFile(log_file_path, .{ .truncate = true }) catch return;
+        // TODO?: Could make it into crateFile fn truncate bool flag
+        log_file_exists = true;
+    } else {
+        log_file = std.fs.cwd().openFile("tmp/log", .{ .write = true }) catch return;
+    }
+    log_file.seekFromEnd(0) catch return;
+    nosuspend log_file.writer().print(prefix ++ format ++ "\n", args) catch return;
+}
 
 const g_host = "www.twitch.tv";
 const g_port = 443;
@@ -103,7 +125,7 @@ pub fn main() anyerror!void {
     defer comments.deinit();
 
     {
-        log.info("Download and load first comments", .{});
+        std.log.info("Download and load first comments", .{});
         const path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
         const json_resp = try twitch.httpsRequest(allocator, g_host, g_port, path);
         defer allocator.free(json_resp);
@@ -136,7 +158,7 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
-    output_mode = .notcurses;
+    // output_mode = .notcurses;
     var ui_mode = blk: {
         switch (output_mode) {
             .stdout => {
@@ -171,7 +193,7 @@ pub fn main() anyerror!void {
                     (!comments.has_next and mpv.video_time > last_offset)) and
                     mpv.video_time > (last_offset - download_time))
                 {
-                    log.info("Downloading new comments", .{});
+                    std.log.info("Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
                     const offset = blk: {
@@ -186,7 +208,7 @@ pub fn main() anyerror!void {
                 }
             },
             .Finished => {
-                log.info("Finished downloading comments", .{});
+                std.log.info("Finished downloading comments", .{});
                 th.wait();
                 try comments_new.parse(download.data);
                 download.freeData();
@@ -199,7 +221,7 @@ pub fn main() anyerror!void {
                 const first_new = comments_new.offsets.items[0];
                 const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 if (chat_time > first_new and chat_time < last_new) {
-                    log.info("Load new comments", .{});
+                    std.log.info("Load new comments", .{});
                     var tmp = comments;
                     comments = comments_new;
                     comments_new = tmp;
@@ -208,7 +230,7 @@ pub fn main() anyerror!void {
                     last_offset = last_new;
                     download.state = .Using;
                 } else if (last_offset <= chat_time or first_new >= chat_time) {
-                    log.info("Comments out of range. Downloading new comments", .{});
+                    std.log.info("Comments out of range. Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
                     download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });

@@ -316,10 +316,12 @@ pub const NotCurses = struct {
         return n;
     }
 
+    // TODO: can error
     pub fn cursorDisable(n: *T) void {
         _ = nc.notcurses_cursor_disable(n);
     }
 
+    // TODO: can error
     pub fn cursorEnable(n: *T) void {
         _ = nc.notcurses_cursor_enable(n, -1, -1);
     }
