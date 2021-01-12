@@ -60,7 +60,7 @@ pub fn main() anyerror!void {
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     var output_mode: ui.UiMode = .stdout;
-    // output_mode = .notcurses;
+    output_mode = .notcurses;
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
 

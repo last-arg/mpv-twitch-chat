@@ -1,7 +1,6 @@
 const std = @import("std");
 const warn = std.debug.warn;
 const log = std.log.default;
-const dd = @import("debug.zig").ttyWarn;
 
 const nc = @cImport({
     @cDefine("_XOPEN_SOURCE", {}); // To enable fn wcwidth
@@ -21,7 +20,12 @@ const nc = @cImport({
 //
 // Seems like can display images but can't set image size
 
-pub const Align = nc.ncalign_e;
+pub const Align = enum {
+    unaligned = nc.NCALIGN_UNALIGNED,
+    left = nc.NCALIGN_LEFT,
+    center = nc.NCALIGN_CENTER,
+    right = nc.NCALIGN_RIGHT,
+};
 
 pub const Style = struct {
     pub const none = nc.NCSTYLE_NONE;
@@ -159,18 +163,24 @@ pub const Plane = struct {
     pub const T = nc.struct_ncplane;
     pub const Options = nc.ncplane_options;
 
-    // TODO: flesh out fun parameters
-    pub fn create(plane: *T, rows: usize, cols: usize) !*T {
+    pub const CreateOptions = struct {
+        x: isize = 0,
+        y: isize = 0,
+        flags: usize = 0,
+    };
+
+    // TODO: implement rest of CreateOptions args
+    pub fn create(plane: *T, rows: usize, cols: usize, opts: CreateOptions) !*T {
         const plane2_opts = nc.ncplane_options{
-            .y = 0,
-            .x = 0,
+            .y = @intCast(c_int, opts.x),
+            .x = @intCast(c_int, opts.y),
             .rows = @intCast(c_int, rows),
             .cols = @intCast(c_int, cols),
             .userptr = null,
             .name = "", // For debugging
             // .resizecb = fn_cb_param orelse planeResize,
             .resizecb = defaultResizeCb,
-            .flags = 0,
+            .flags = opts.flags,
         };
 
         var result = nc.ncplane_create(plane, &plane2_opts) orelse {
@@ -208,9 +218,19 @@ pub const Plane = struct {
         bytes: usize,
         result: isize,
     };
-    pub fn putText(p: *T, str: [:0]const u8) TextReturn {
+
+    const TextOptions = struct {
+        t_align: Align = .left,
+    };
+
+    pub fn putText(
+        p: *T,
+        str: [:0]const u8,
+        opts: TextOptions,
+    ) TextReturn {
         var bytes: usize = 0;
-        const result = nc.ncplane_puttext(p, -1, Align.NCALIGN_LEFT, @ptrCast([*]const u8, str), &bytes);
+        const alignment = @intToEnum(nc.ncalign_e, @enumToInt(opts.t_align));
+        const result = nc.ncplane_puttext(p, -1, alignment, str, &bytes);
         return .{ .bytes = bytes, .result = @intCast(isize, result) };
     }
 

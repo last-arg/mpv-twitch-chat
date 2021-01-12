@@ -11,18 +11,67 @@ const Plane = nc.Plane;
 const Pile = nc.Pile;
 const Style = nc.Style;
 
+pub const UiMode = enum {
+    stdout,
+    direct,
+    notcurses,
+};
+
+pub const Ui = struct {
+    const Self = @This();
+    printFn: fn (ui: Self, str: [:0]const u8) anyerror!void,
+    printCommentFn: fn (ui: Self, comment: CommentResult) anyerror!void,
+    sleepLoopFn: fn (ui: Self, ms: u64) anyerror!void,
+    deinitFn: fn (ui: Self) void,
+
+    pub fn print(ui: Self, str: [:0]const u8) anyerror!void {
+        return try ui.printFn(ui, str);
+    }
+
+    pub fn printComment(ui: Self, comment: CommentResult) anyerror!void {
+        return try ui.printCommentFn(ui, comment);
+    }
+
+    pub fn sleepLoop(ui: Self, ms: u64) anyerror!void {
+        return try ui.sleepLoopFn(ui, ms);
+    }
+
+    pub fn deinit(ui: Self) void {
+        ui.deinitFn(ui);
+    }
+};
+
 pub const UiNotCurses = struct {
     const Self = @This();
     nc: *NotCurses.T,
     text_plane: *Plane.T,
+    info_plane: *Plane.T,
     ui: Ui,
 
     pub fn init() !Self {
         var nc_opts = NotCurses.default_options;
         const n = try NotCurses.init(nc_opts);
+
+        // Create planes
+        const std_plane = try NotCurses.stdplane(n);
+        var cols: usize = 0;
+        var rows: usize = 0;
+        Plane.dimYX(std_plane, &rows, &cols);
+        const text_plane = try Plane.create(std_plane, rows, cols, .{});
+        const info_plane = try Plane.create(
+            std_plane,
+            3,
+            cols,
+            .{ .x = @intCast(isize, rows) - 3 },
+        );
+
+        // Setup info_plane plane
+        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = nc.Align.left });
+
         return UiNotCurses{
             .nc = n,
-            .text_plane = try createTextPlane(n),
+            .text_plane = text_plane,
+            .info_plane = info_plane,
             .ui = Ui{
                 .deinitFn = deinit,
                 .printFn = print,
@@ -75,15 +124,6 @@ pub const UiNotCurses = struct {
         }
     }
 
-    fn createTextPlane(n: *NotCurses.T) !*Plane.T {
-        const std_plane = try NotCurses.stdplane(n);
-        var cols: usize = 0;
-        var rows: usize = 0;
-        Plane.dimYX(std_plane, &rows, &cols);
-
-        return try Plane.create(std_plane, rows, cols);
-    }
-
     pub fn printComment(ui: Ui, c: CommentResult) !void {
         const self = @fieldParentPtr(Self, "ui", &ui);
         var buf: [512]u8 = undefined; // NOTE: IRC max message length is 512 + extra
@@ -105,6 +145,8 @@ pub const UiNotCurses = struct {
         if (str.len == 0) return;
         const self = @fieldParentPtr(Self, "ui", &ui);
 
+        // TODO: check if cursor is visible or not for scrolling
+
         var cols: usize = 0;
         var rows: usize = 0;
         // Plane.dimYX(self.text_plane, &rows, &cols);
@@ -115,7 +157,7 @@ pub const UiNotCurses = struct {
         var col_curr: usize = 0;
         Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
 
-        var result = Plane.putText(self.text_plane, str);
+        var result = Plane.putText(self.text_plane, str, .{ .t_align = nc.Align.left });
 
         var bytes: usize = result.bytes;
         while (result.result == -1) {
@@ -128,11 +170,12 @@ pub const UiNotCurses = struct {
                 @intCast(isize, row_curr),
                 @intCast(isize, col_curr),
             );
-            result = Plane.putText(self.text_plane, str[bytes..]);
+            result = Plane.putText(self.text_plane, str[bytes..], .{ .t_align = nc.Align.left });
             Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
             bytes += result.bytes;
         }
 
+        // TODO: Might only run when first putText fails
         var row: isize = 0;
         var col: isize = 0;
         Plane.getYX(self.text_plane, &row, &col);
@@ -265,35 +308,5 @@ pub const UiDirect = struct {
     pub fn deinit(ui: Ui) void {
         const self = @fieldParentPtr(Self, "ui", &ui);
         Direct.stop(self.direct);
-    }
-};
-
-pub const UiMode = enum {
-    stdout,
-    direct,
-    notcurses,
-};
-
-pub const Ui = struct {
-    const Self = @This();
-    printFn: fn (ui: Self, str: [:0]const u8) anyerror!void,
-    printCommentFn: fn (ui: Self, comment: CommentResult) anyerror!void,
-    sleepLoopFn: fn (ui: Self, ms: u64) anyerror!void,
-    deinitFn: fn (ui: Self) void,
-
-    pub fn print(ui: Self, str: [:0]const u8) anyerror!void {
-        return try ui.printFn(ui, str);
-    }
-
-    pub fn printComment(ui: Self, comment: CommentResult) anyerror!void {
-        return try ui.printCommentFn(ui, comment);
-    }
-
-    pub fn sleepLoop(ui: Self, ms: u64) anyerror!void {
-        return try ui.sleepLoopFn(ui, ms);
-    }
-
-    pub fn deinit(ui: Self) void {
-        ui.deinitFn(ui);
     }
 };
