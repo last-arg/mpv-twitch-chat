@@ -1,6 +1,5 @@
 Features:
 [ ] Track mpv video state to avoid unnecessary downloads. Happens during seek
-[ ] UiNotCurses: scroll that doesn't bounce to bottom when new input is printed
 
 Improve:
 [ ] UI (Notcurses): limit scroll area

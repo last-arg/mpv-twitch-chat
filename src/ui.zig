@@ -23,7 +23,7 @@ pub const Ui = struct {
     const Self = @This();
     printFn: fn (ui: Self, str: [:0]const u8) anyerror!void,
     printCommentFn: fn (ui: Self, comment: CommentResult) anyerror!void,
-    sleepLoopFn: fn (ui: Self, ms: u64) anyerror!void,
+    sleepLoopFn: fn (ui: *Self, ms: u64) anyerror!void,
     deinitFn: fn (ui: Self) void,
 
     pub fn print(ui: Self, str: [:0]const u8) anyerror!void {
@@ -34,7 +34,7 @@ pub const Ui = struct {
         return try ui.printCommentFn(ui, comment);
     }
 
-    pub fn sleepLoop(ui: Self, ms: u64) anyerror!void {
+    pub fn sleepLoop(ui: *Self, ms: u64) anyerror!void {
         return try ui.sleepLoopFn(ui, ms);
     }
 
@@ -49,6 +49,7 @@ pub const UiNotCurses = struct {
     text_plane: *Plane.T,
     info_plane: *Plane.T,
     ui: Ui,
+    scrolling: bool = false,
 
     pub fn init() !Self {
         var nc_opts = NotCurses.default_options;
@@ -90,10 +91,10 @@ pub const UiNotCurses = struct {
         };
     }
 
-    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+    pub fn sleepLoop(ui: *Ui, ns: u64) !void {
+        var self = @fieldParentPtr(Self, "ui", ui);
         const input_inactive_ns = time.ns_per_ms * 120;
         const input_active_ns = time.ns_per_ms * 60;
-        const self = @fieldParentPtr(Self, "ui", &ui);
         var col_curr: isize = 0;
         var row_curr: isize = 0;
         const timer = try Timer.start();
@@ -102,6 +103,7 @@ pub const UiNotCurses = struct {
         while (true) {
             var input_update_ns: u64 = input_inactive_ns;
             var char_code: u32 = 0;
+            var scrolled = false;
 
             while (char_code != std.math.maxInt(u32)) {
                 char_code = NotCurses.getcNblock(self.nc);
@@ -116,14 +118,40 @@ pub const UiNotCurses = struct {
                     Plane.getYX(self.text_plane, &row_curr, &col_curr);
                     // TODO: don't scroll past panel top
                     try Plane.moveYX(self.text_plane, row_curr - 1, col_curr);
+                    scrolled = true;
                 } else if (char_code == 'k') {
-                    input_update_ns = input_active_ns;
                     Plane.getYX(self.text_plane, &row_curr, &col_curr);
                     // TODO: don't scroll past panel bottom
                     try Plane.moveYX(self.text_plane, row_curr + 1, col_curr);
+                    input_update_ns = input_active_ns;
+                    scrolled = true;
                 } else if (char_code == 'r') {
                     try NotCurses.render(self.nc);
                 }
+            }
+
+            if (scrolled) {
+                const std_plane = try NotCurses.stdplane(self.nc);
+                var cols: usize = 0;
+                var rows: usize = 0;
+                Plane.dimYX(std_plane, &rows, &cols);
+
+                var cursor_row: usize = 0;
+                var cursor_col: usize = 0;
+                Plane.cursorYX(self.text_plane, &cursor_row, &cursor_col);
+
+                Plane.getYX(self.text_plane, &row_curr, &col_curr);
+
+                var last_row = @intCast(isize, rows) - 1 + (-row_curr);
+                std.log.info("cursor: {} {}", .{ cursor_row, cursor_col });
+                std.log.info("text_plane: {} {}", .{ row_curr, col_curr });
+
+                if (cursor_row > last_row) {
+                    self.scrolling = true;
+                } else {
+                    self.scrolling = false;
+                }
+                scrolled = false;
             }
 
             char_code = 0;
@@ -183,16 +211,18 @@ pub const UiNotCurses = struct {
             bytes += result.bytes;
         }
 
-        var row: isize = 0;
-        var col: isize = 0;
-        Plane.getYX(self.text_plane, &row, &col);
-        Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
-        // Assumes row is negative
-        const last_row = @intCast(isize, rows) - 1 + (-row);
-        // Only runs when first putText fails
-        if (row_curr > last_row) {
-            const move_row = @intCast(isize, row_curr) - last_row;
-            try Plane.moveYX(self.text_plane, row - move_row, col);
+        if (!self.scrolling) {
+            var row: isize = 0;
+            var col: isize = 0;
+            Plane.getYX(self.text_plane, &row, &col);
+            Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
+            // Assumes row is negative
+            const last_row = @intCast(isize, rows) - 1 + (-row);
+            // Only runs when first putText fails
+            if (row_curr > last_row) {
+                const move_row = @intCast(isize, row_curr) - last_row;
+                try Plane.moveYX(self.text_plane, row - move_row, col);
+            }
         }
 
         try NotCurses.render(self.nc);
@@ -224,7 +254,7 @@ pub const UiStdout = struct {
         };
     }
 
-    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+    pub fn sleepLoop(ui: *Ui, ns: u64) !void {
         std.time.sleep(ns);
     }
 
@@ -289,7 +319,7 @@ pub const UiDirect = struct {
         };
     }
 
-    pub fn sleepLoop(ui: Ui, ns: u64) !void {
+    pub fn sleepLoop(ui: *Ui, ns: u64) !void {
         std.time.sleep(ns);
     }
 
