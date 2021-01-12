@@ -1,5 +1,6 @@
 Features:
 [ ] Track mpv video state to avoid unnecessary downloads. Happens during seek
+[ ] Make CLI option for logfile
 
 Improve:
 [ ] UI (Notcurses): limit scroll area

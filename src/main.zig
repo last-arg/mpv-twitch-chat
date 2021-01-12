@@ -17,8 +17,8 @@ const dd = @import("debug.zig").ttyWarn;
 
 pub const log_level: std.log.Level = .info;
 
-var log_file_exists = false;
-const log_file_path = "tmp/log";
+var first_log = false;
+var log_file_path: ?[]const u8 = null;
 pub fn log(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.EnumLiteral),
@@ -26,17 +26,28 @@ pub fn log(
     args: anytype,
 ) void {
     const prefix = "[" ++ @tagName(level) ++ "] ";
-    var log_file: std.fs.File = undefined;
-    defer log_file.close();
-    if (!log_file_exists) {
-        log_file = std.fs.cwd().createFile(log_file_path, .{ .truncate = true }) catch return;
-        // TODO?: Could make it into crateFile fn truncate bool flag
-        log_file_exists = true;
+    if (log_file_path) |file_path| {
+        var log_file: std.fs.File = undefined;
+        defer log_file.close();
+        if (!first_log) {
+            log_file = std.fs.cwd().createFile(file_path, .{ .truncate = true }) catch return;
+            first_log = true;
+        } else {
+            log_file = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| {
+                warn("{}\n", .{err});
+                return;
+            };
+        }
+        if (!log_file.isTty()) {
+            log_file.seekFromEnd(0) catch return;
+        }
+        nosuspend log_file.writer().print(prefix ++ format ++ "\n", args) catch return;
     } else {
-        log_file = std.fs.cwd().openFile("tmp/log", .{ .write = true }) catch return;
+        const stderr = std.io.getStdErr().writer();
+        const held = std.debug.getStderrMutex().acquire();
+        defer held.release();
+        nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
     }
-    log_file.seekFromEnd(0) catch return;
-    nosuspend log_file.writer().print(prefix ++ format ++ "\n", args) catch return;
 }
 
 const g_host = "www.twitch.tv";
@@ -60,7 +71,7 @@ pub fn main() anyerror!void {
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     var output_mode: ui.UiMode = .stdout;
-    output_mode = .notcurses;
+    // output_mode = .notcurses;
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
 
@@ -122,6 +133,27 @@ pub fn main() anyerror!void {
 
     var chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
 
+    var ui_mode = blk: {
+        switch (output_mode) {
+            .stdout => {
+                var ui_mode = try ui.UiStdout.init();
+                log_file_path = null;
+                break :blk &ui_mode.ui;
+            },
+            .direct => {
+                var ui_mode = try ui.UiDirect.init();
+                log_file_path = null;
+                break :blk &ui_mode.ui;
+            },
+            .notcurses => {
+                var ui_mode = try ui.UiNotCurses.init();
+                // TODO: notcurses log file
+                log_file_path = "/tmp/mpv-vod-chat.log";
+                break :blk &ui_mode.ui;
+            },
+        }
+    };
+
     var comments = try Comments.init(allocator, comments_delay);
     defer comments.deinit();
 
@@ -137,7 +169,6 @@ pub fn main() anyerror!void {
     var first_offset = comments.offsets.items[0];
     var last_offset = comments.offsets.items[comments.offsets.items.len - 1];
 
-    // TODO: download next comments right now
     var comments_new: Comments = try Comments.init(allocator, comments_delay);
 
     var mutex = std.Mutex{};
@@ -158,23 +189,6 @@ pub fn main() anyerror!void {
 
     // if (mpv.video_time > start_time) {
     // }
-
-    var ui_mode = blk: {
-        switch (output_mode) {
-            .stdout => {
-                var ui_mode = try ui.UiStdout.init();
-                break :blk &ui_mode.ui;
-            },
-            .direct => {
-                var ui_mode = try ui.UiDirect.init();
-                break :blk &ui_mode.ui;
-            },
-            .notcurses => {
-                var ui_mode = try ui.UiNotCurses.init();
-                break :blk &ui_mode.ui;
-            },
-        }
-    };
 
     defer ui_mode.deinit();
 
