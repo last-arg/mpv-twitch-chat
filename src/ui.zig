@@ -12,6 +12,7 @@ const Pile = nc.Pile;
 const Style = nc.Style;
 const Align = nc.Align;
 const Cell = nc.Cell;
+const Key = nc.Key;
 
 pub const UiMode = enum {
     stdout,
@@ -50,6 +51,7 @@ pub const UiNotCurses = struct {
     info_plane: *Plane.T,
     ui: Ui,
     scrolling: bool = false,
+    mouse_btn1_down: bool = false,
 
     pub fn init() !Self {
         var nc_opts = NotCurses.default_options;
@@ -78,6 +80,7 @@ pub const UiNotCurses = struct {
         Plane.setBaseCell(info_plane, info_cell);
         var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.center });
 
+        try NotCurses.mouseEnable(n);
         return UiNotCurses{
             .nc = n,
             .text_plane = text_plane,
@@ -99,15 +102,22 @@ pub const UiNotCurses = struct {
         var row_curr: isize = 0;
         const timer = try Timer.start();
         const start_time = timer.read();
+        var input: nc.NotCurses.Input = undefined;
 
         while (true) {
             var input_update_ns: u64 = input_inactive_ns;
             var char_code: u32 = 0;
             var scrolled = false;
 
+            // pub const NCKEY_SCROLL_UP = NCKEY_BUTTON4;
+            // pub const NCKEY_SCROLL_DOWN = NCKEY_BUTTON5;
+
             while (char_code != std.math.maxInt(u32)) {
-                char_code = NotCurses.getcNblock(self.nc);
-                // dd("code: {}\n", .{char_code});
+                char_code = NotCurses.getcNblock(self.nc, &input);
+                if (char_code != std.math.maxInt(u32)) {
+                    std.log.info("{} {}", .{ char_code, input });
+                }
+
                 if (char_code == 'q') {
                     ui.deinit();
                     // TODO?: Might not clean up main loop
@@ -127,6 +137,29 @@ pub const UiNotCurses = struct {
                     scrolled = true;
                 } else if (char_code == 'r') {
                     try NotCurses.render(self.nc);
+                } else if (self.scrolling) {
+                    std.log.info("scrolling", .{});
+                    if (char_code == Key.button1) {
+                        input_update_ns = input_active_ns;
+                        self.mouse_btn1_down = true;
+                    } else if (char_code == Key.release) {
+                        // scroll to bottom of input
+                        self.mouse_btn1_down = false;
+                        const std_plane = try NotCurses.stdplane(self.nc);
+                        var cols: usize = 0;
+                        var rows: usize = 0;
+                        Plane.dimYX(std_plane, &rows, &cols);
+
+                        if ((rows - 1) == input.y) {
+                            Plane.moveBottom(self.info_plane);
+                            var cursor_row: usize = 0;
+                            var cursor_col: usize = 0;
+                            Plane.cursorYX(self.text_plane, &cursor_row, &cursor_col);
+                            const row = -(@intCast(isize, cursor_row) - (@intCast(isize, rows) - 1));
+                            try Plane.moveYX(self.text_plane, row, 0);
+                            self.scrolling = false;
+                        }
+                    }
                 }
             }
 

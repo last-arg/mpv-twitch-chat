@@ -27,6 +27,13 @@ pub const Align = enum {
     right = nc.NCALIGN_RIGHT,
 };
 
+pub const Key = struct {
+    pub const button1 = nc.NCKEY_BUTTON1;
+    pub const release = nc.NCKEY_RELEASE;
+    pub const scroll_up = nc.NCKEY_SCROLL_UP;
+    pub const scroll_down = nc.NCKEY_SCROLL_DOWN;
+};
+
 pub const Style = struct {
     pub const none = nc.NCSTYLE_NONE;
     pub const mask = nc.NCSTYLE_MASK;
@@ -317,7 +324,7 @@ pub const NotCurses = struct {
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
     const Cell = nc.nccell;
-    const Input = nc.ncinput;
+    pub const Input = nc.ncinput;
 
     pub const default_options = Options{
         .termtype = null,
@@ -359,6 +366,12 @@ pub const NotCurses = struct {
         if (nc.notcurses_render(n) < 0) {
             log.warn("Notcurses.render failed", .{});
             return error.NotCursesRenderFailed;
+        }
+    }
+
+    pub fn mouseEnable(n: *T) !void {
+        if (nc.notcurses_mouse_enable(n) < 0) {
+            return error.CantEnableMouseEvents;
         }
     }
 
@@ -407,10 +420,8 @@ pub const NotCurses = struct {
         }
     }
 
-    pub fn getcNblock(n: *Struct) u32 {
-        // TODO: ncinput result
-        // var ni: nc.ncinput = undefined;
-        const result = nc.notcurses_getc_nblock(n, null);
+    pub fn getcNblock(n: *Struct, input: *Input) u32 {
+        const result = nc.notcurses_getc_nblock(n, input);
         return result;
     }
 
