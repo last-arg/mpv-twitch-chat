@@ -80,7 +80,7 @@ pub const Mpv = struct {
                 defer std.json.parseFree(Mpv.Data, resp, .{ .allocator = self.allocator });
 
                 if (!mem.eql(u8, "success", resp.@"error")) {
-                    warn("WARN: Mpv json field error isn't success\n", .{});
+                    std.log.warn("WARN: Mpv json field error isn't success", .{});
                     continue;
                 }
 
@@ -95,7 +95,7 @@ pub const Mpv = struct {
                         },
                     }
                 } else {
-                    warn("WARN: Mpv json field data is null\n", .{});
+                    std.log.warn("WARN: Mpv json field data is null", .{});
                 }
                 continue;
             } else |err| {
@@ -110,7 +110,7 @@ pub const Mpv = struct {
                 continue;
             };
             defer std.json.parseFree(Mpv.Event, resp, .{ .allocator = self.allocator });
-            warn("EVENT: {s}\n", .{resp.event});
+            std.log.info("EVENT: {s}", .{resp.event});
         }
     }
 
