@@ -149,7 +149,6 @@ pub const UiNotCurses = struct {
 
         var cols: usize = 0;
         var rows: usize = 0;
-        // Plane.dimYX(self.text_plane, &rows, &cols);
         const std_plane = try NotCurses.stdplane(self.nc);
         Plane.dimYX(std_plane, &rows, &cols);
 
@@ -175,13 +174,13 @@ pub const UiNotCurses = struct {
             bytes += result.bytes;
         }
 
-        // TODO: Might only run when first putText fails
         var row: isize = 0;
         var col: isize = 0;
         Plane.getYX(self.text_plane, &row, &col);
         Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
         // Assumes row is negative
         const last_row = @intCast(isize, rows) - 1 + (-row);
+        // Only runs when first putText fails
         if (row_curr > last_row) {
             const move_row = @intCast(isize, row_curr) - last_row;
             try Plane.moveYX(self.text_plane, row - move_row, col);
