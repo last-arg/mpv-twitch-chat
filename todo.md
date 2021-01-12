@@ -1,5 +1,6 @@
 Features:
 [ ] Track mpv video state to avoid unnecessary downloads. Happens during seek
+[ ] Make scroll info plane clickable if able to
 
 Improve:
 [ ] UI (Notcurses): limit scroll area

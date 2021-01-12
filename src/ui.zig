@@ -70,13 +70,13 @@ pub const UiNotCurses = struct {
             std_plane,
             1,
             cols,
-            .{ .x = @intCast(isize, rows) - 2 },
+            .{ .x = @intCast(isize, rows) - 1 },
         );
         Plane.moveBottom(info_plane);
         var info_cell = Cell.charInitializer(' ');
         Cell.setBbRgb(&info_cell, 0xf2e5bc);
         Plane.setBaseCell(info_plane, info_cell);
-        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.left });
+        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.center });
 
         return UiNotCurses{
             .nc = n,
@@ -148,8 +148,10 @@ pub const UiNotCurses = struct {
 
                 if (cursor_row > last_row) {
                     self.scrolling = true;
+                    Plane.moveTop(self.info_plane);
                 } else {
                     self.scrolling = false;
+                    Plane.moveBottom(self.info_plane);
                 }
                 scrolled = false;
             }
