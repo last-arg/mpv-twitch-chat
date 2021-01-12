@@ -10,6 +10,8 @@ const Direct = nc.Direct;
 const Plane = nc.Plane;
 const Pile = nc.Pile;
 const Style = nc.Style;
+const Align = nc.Align;
+const Cell = nc.Cell;
 
 pub const UiMode = enum {
     stdout,
@@ -57,16 +59,23 @@ pub const UiNotCurses = struct {
         var cols: usize = 0;
         var rows: usize = 0;
         Plane.dimYX(std_plane, &rows, &cols);
+        // Text plane setup
         const text_plane = try Plane.create(std_plane, rows, cols, .{});
+        var text_cell = Cell.charInitializer(' ');
+        Plane.setBaseCell(text_plane, text_cell);
+
+        // Info/Scroll plane setup
         const info_plane = try Plane.create(
             std_plane,
-            3,
+            1,
             cols,
-            .{ .x = @intCast(isize, rows) - 3 },
+            .{ .x = @intCast(isize, rows) - 2 },
         );
-
-        // Setup info_plane plane
-        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = nc.Align.left });
+        Plane.moveBottom(info_plane);
+        var info_cell = Cell.charInitializer(' ');
+        Cell.setBbRgb(&info_cell, 0xf2e5bc);
+        Plane.setBaseCell(info_plane, info_cell);
+        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.left });
 
         return UiNotCurses{
             .nc = n,
@@ -156,7 +165,7 @@ pub const UiNotCurses = struct {
         var col_curr: usize = 0;
         Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
 
-        var result = Plane.putText(self.text_plane, str, .{ .t_align = nc.Align.left });
+        var result = Plane.putText(self.text_plane, str, .{ .t_align = Align.left });
 
         var bytes: usize = result.bytes;
         while (result.result == -1) {
@@ -169,7 +178,7 @@ pub const UiNotCurses = struct {
                 @intCast(isize, row_curr),
                 @intCast(isize, col_curr),
             );
-            result = Plane.putText(self.text_plane, str[bytes..], .{ .t_align = nc.Align.left });
+            result = Plane.putText(self.text_plane, str[bytes..], .{ .t_align = Align.left });
             Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
             bytes += result.bytes;
         }

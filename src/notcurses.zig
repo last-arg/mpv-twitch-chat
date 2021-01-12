@@ -190,6 +190,10 @@ pub const Plane = struct {
         return result;
     }
 
+    pub fn erase(p: *T) void {
+        nc.ncplane_erase(p);
+    }
+
     pub fn moveBottom(p: *T) void {
         nc.ncplane_move_bottom(p);
     }
@@ -204,6 +208,11 @@ pub const Plane = struct {
         nc.ncplane_dim_yx(p, &rows_result, &cols_result);
         cols.* = @intCast(usize, cols_result);
         rows.* = @intCast(usize, rows_result);
+    }
+
+    // TODO?: can fail?
+    pub fn setBaseCell(p: *T, c: Cell.T) void {
+        _ = nc.ncplane_set_base_cell(p, &c);
     }
 
     pub fn setScrolling(p: *T, scrollp: bool) void {
@@ -361,15 +370,6 @@ pub const NotCurses = struct {
         rows.* = @intCast(usize, rows_result);
     }
 
-    pub fn planeResetBackground(plane: *Plane.T) void {
-        var channels: u64 = nc.CELL_BG_PALETTE;
-        _ = nc.channels_set_bg_rgb(&channels, 0);
-        if (nc.ncplane_set_base(plane, "", 0, channels) != 0) {
-            log.warn("ncplane_set_base failed", .{});
-        }
-        nc.ncplane_erase(plane);
-    }
-
     pub fn getcBlocking(n: *Struct, input: *Input) usize {
         const result = nc.notcurses_getc_blocking(n, input);
         return @intCast(usize, result);
@@ -521,5 +521,27 @@ pub const Direct = struct {
         if (nc.ncdirect_flush(n) != 0) {
             log.warn("ncdirect_flush failed", .{});
         }
+    }
+};
+
+pub const Cell = struct {
+    pub const T = nc.nccell;
+
+    pub fn charInitializer(c: u8) T {
+        return T{
+            .gcluster = std.mem.nativeToLittle(u32, c),
+            .gcluster_backstop = 0,
+            .width = @intCast(u8, nc.wcwidth(c)),
+            .stylemask = 0,
+            .channels = 0,
+        };
+    }
+
+    pub fn setBbRgb(c: *T, channel: u32) void {
+        _ = nc.cell_set_bg_rgb(c, channel);
+    }
+
+    pub fn setFbRgb(c: *T, channel: u32) void {
+        _ = nc.cell_set_fg_rgb(c, channel);
     }
 };
