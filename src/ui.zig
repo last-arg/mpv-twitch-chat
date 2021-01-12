@@ -108,15 +108,16 @@ pub const UiNotCurses = struct {
             var input_update_ns: u64 = input_inactive_ns;
             var char_code: u32 = 0;
             var scrolled = false;
+            var row_change: isize = 0;
 
             // pub const NCKEY_SCROLL_UP = NCKEY_BUTTON4;
             // pub const NCKEY_SCROLL_DOWN = NCKEY_BUTTON5;
 
             while (char_code != std.math.maxInt(u32)) {
                 char_code = NotCurses.getcNblock(self.nc, &input);
-                if (char_code != std.math.maxInt(u32)) {
-                    std.log.info("{} {}", .{ char_code, input });
-                }
+                // if (char_code != std.math.maxInt(u32)) {
+                //     std.log.info("{} {}", .{ char_code, input });
+                // }
 
                 if (char_code == 'q') {
                     ui.deinit();
@@ -124,21 +125,14 @@ pub const UiNotCurses = struct {
                     // Makes sure that cursor is visible and works
                     std.process.exit(0);
                 } else if (char_code == 'j') {
-                    input_update_ns = input_active_ns;
-                    Plane.getYX(self.text_plane, &row_curr, &col_curr);
-                    // TODO: don't scroll past panel top
-                    try Plane.moveYX(self.text_plane, row_curr - 1, col_curr);
+                    row_change -= 1;
                     scrolled = true;
                 } else if (char_code == 'k') {
-                    Plane.getYX(self.text_plane, &row_curr, &col_curr);
-                    // TODO: don't scroll past panel bottom
-                    try Plane.moveYX(self.text_plane, row_curr + 1, col_curr);
-                    input_update_ns = input_active_ns;
+                    row_change += 1;
                     scrolled = true;
                 } else if (char_code == 'r') {
                     try NotCurses.render(self.nc);
                 } else if (self.scrolling) {
-                    std.log.info("scrolling", .{});
                     if (char_code == Key.button1) {
                         input_update_ns = input_active_ns;
                         self.mouse_btn1_down = true;
@@ -164,6 +158,7 @@ pub const UiNotCurses = struct {
             }
 
             if (scrolled) {
+                input_update_ns = input_active_ns;
                 const std_plane = try NotCurses.stdplane(self.nc);
                 var cols: usize = 0;
                 var rows: usize = 0;
@@ -175,9 +170,20 @@ pub const UiNotCurses = struct {
 
                 Plane.getYX(self.text_plane, &row_curr, &col_curr);
 
-                var last_row = @intCast(isize, rows) - 1 + (-row_curr);
+                // Don't cross text_plane edges
+                if (row_change != 0) {
+                    const new_curr = row_curr + row_change;
+
+                    var bottom_edge = -(@intCast(isize, cursor_row) - @intCast(isize, rows) + 1);
+                    if (new_curr <= 0 and bottom_edge <= new_curr) {
+                        row_curr = new_curr;
+                        try Plane.moveYX(self.text_plane, new_curr, col_curr);
+                    } else {}
+                }
+
                 std.log.info("cursor: {} {}", .{ cursor_row, cursor_col });
                 std.log.info("text_plane: {} {}", .{ row_curr, col_curr });
+                var last_row = @intCast(isize, rows) - 1 + (-row_curr);
 
                 if (cursor_row > last_row) {
                     self.scrolling = true;
@@ -189,7 +195,6 @@ pub const UiNotCurses = struct {
                 scrolled = false;
             }
 
-            char_code = 0;
             try NotCurses.render(self.nc);
             if (timer.read() > ns) break;
             std.time.sleep(input_update_ns);

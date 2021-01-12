@@ -3,10 +3,9 @@ Features:
 [ ] Make CLI option for logfile
 
 Improve:
-[ ] UI (Notcurses): limit scroll area
 [ ] UI (Notcurses): add scroll events
 [ ] UI (Notcurses): events: pagedown, pageup, home, end
-[ ] UiNotCurses: Logging when not debugging (printing to file)
+[ ] UI (NotCurses): resizing
 
 Bugs:
 [ ] UiNotCurses? There might be condition in which CPU will be 100%
