@@ -8,3 +8,11 @@ Improve:
 Bugs:
 [ ] UiNotCurses? There might be condition in which CPU will be 100%
 [ ] Ui (NotCurses) on unexpected crash cant see cursor
+
+Research/Investigate:
+- Certificate file (*.pem)
+    - https://curl.haxx.se/docs/caextract.html
+
+- OpenSSl
+    - [OpenSSL server/client example](https://aticleworld.com/ssl-server-client-using-openssl-in-c/)
+    - [Zig openssl example](https://github.com/marler8997/ziget/blob/master/openssl/ssl.zig)
