@@ -366,6 +366,10 @@ pub const NotCurses = struct {
         _ = nc.notcurses_cursor_enable(n, -1, -1);
     }
 
+    pub fn canUtf8(n: *T) bool {
+        return nc.notcurses_canutf8(n);
+    }
+
     pub fn render(n: *T) !void {
         if (nc.notcurses_render(n) < 0) {
             log.warn("Notcurses.render failed", .{});

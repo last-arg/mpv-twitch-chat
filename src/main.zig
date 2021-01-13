@@ -3,7 +3,7 @@ const warn = std.debug.warn;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
-// const log = std.log.default;
+const l = std.log.default;
 const Mpv = @import("mpv.zig").Mpv;
 const Comments = @import("comments.zig").Comments;
 const CommentResult = @import("comments.zig").CommentResult;
@@ -136,20 +136,20 @@ pub fn main() anyerror!void {
     var ui_mode = blk: {
         switch (output_mode) {
             .stdout => {
-                var ui_mode = try ui.UiStdout.init();
                 log_file_path = null;
+                var ui_mode = try ui.UiStdout.init();
                 break :blk &ui_mode.ui;
             },
             .direct => {
-                var ui_mode = try ui.UiDirect.init();
                 log_file_path = null;
+                var ui_mode = try ui.UiDirect.init();
                 break :blk &ui_mode.ui;
             },
             .notcurses => {
-                var ui_mode = try ui.UiNotCurses.init();
-                // log_file_path = "/dev/pts/8";
+                // log_file_path = "/dev/pts/12";
                 log_file_path = "tmp/log";
                 // log_file_path = "/tmp/mpv-vod-chat.log";
+                var ui_mode = try ui.UiNotCurses.init();
                 break :blk &ui_mode.ui;
             },
         }
@@ -204,7 +204,6 @@ pub fn main() anyerror!void {
 
         switch (download.state) {
             .Using => {
-                std.log.info("Using", .{});
                 if (((!comments.has_prev and mpv.video_time < first_offset) or
                     (!comments.has_next and mpv.video_time > last_offset)) and
                     mpv.video_time > (last_offset - download_time))
@@ -234,7 +233,6 @@ pub fn main() anyerror!void {
                 continue;
             },
             .Ready => {
-                std.log.info("Ready", .{});
                 const first_new = comments_new.offsets.items[0];
                 const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 if (chat_time > first_new and chat_time < last_new) {
@@ -254,9 +252,7 @@ pub fn main() anyerror!void {
                     th = try Thread.spawn(&download, Download.download);
                 }
             },
-            .Downloading => {
-                std.log.info("Downloading", .{});
-            },
+            .Downloading => {},
         }
 
         const delay_ns: u64 = blk: {

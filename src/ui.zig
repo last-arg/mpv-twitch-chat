@@ -3,6 +3,7 @@ const os = std.os;
 const time = std.time;
 const Timer = std.time.Timer;
 const fmt = std.fmt;
+const l = std.log.default;
 const CommentResult = @import("comments.zig").CommentResult;
 const nc = @import("notcurses.zig");
 const NotCurses = nc.NotCurses;
@@ -251,15 +252,15 @@ pub const UiNotCurses = struct {
         try ui.print(name_str);
         Plane.stylesOff(self.text_plane, Style.bold);
 
-        const body_str = try fmt.bufPrintZ(&buf, "{s}\n", .{c.body});
+        const body_str = try fmt.bufPrintZ(&buf, "{s}", .{c.body});
         try ui.print(body_str);
+        // NOTE: separate print for newline  because body string might have invalid bytes
+        try ui.print(try fmt.bufPrintZ(&buf, "\n", .{}));
     }
 
     pub fn print(ui: Ui, str: [:0]const u8) !void {
         if (str.len == 0) return;
         const self = @fieldParentPtr(Self, "ui", &ui);
-
-        // TODO: check if cursor is visible or not for scrolling
 
         var cols: usize = 0;
         var rows: usize = 0;
@@ -274,8 +275,18 @@ pub const UiNotCurses = struct {
 
         var bytes: usize = result.bytes;
         while (result.result == -1) {
+            // NOTE: In case str contains invalid bytes putText print and moves cursor
+            // until invalid byte. Although result.bytes reports back 0 bytes written.
+            // Just don't bother trying to write rest of bytes.
+            if (result.bytes == 0) {
+                const col_old = col_curr;
+                const row_old = row_curr;
+                Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
+                if ((col_curr > col_old and row_curr == row_old) or
+                    row_curr > row_old) break;
+            }
+
             // Use row_curr to calculate new plane height.
-            // plane_current_height = row_curr + 1
             const new_height = row_curr + 12;
             try Plane.resizeSimple(self.text_plane, new_height, cols);
             _ = Plane.cursorMoveYX(
@@ -283,6 +294,7 @@ pub const UiNotCurses = struct {
                 @intCast(isize, row_curr),
                 @intCast(isize, col_curr),
             );
+
             result = Plane.putText(self.text_plane, str[bytes..], .{ .t_align = Align.left });
             Plane.cursorYX(self.text_plane, &row_curr, &col_curr);
             bytes += result.bytes;
