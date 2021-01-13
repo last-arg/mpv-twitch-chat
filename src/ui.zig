@@ -106,7 +106,7 @@ pub const UiNotCurses = struct {
 
         while (true) {
             var input_update_ns: u64 = input_inactive_ns;
-            var char_code: u32 = 0;
+            var char_code: u32 = NotCurses.getcNblock(self.nc, &input);
             var scrolled = false;
             var row_change: isize = 0;
 
@@ -114,11 +114,9 @@ pub const UiNotCurses = struct {
             // pub const NCKEY_SCROLL_DOWN = NCKEY_BUTTON5;
 
             while (char_code != std.math.maxInt(u32)) {
-                char_code = NotCurses.getcNblock(self.nc, &input);
                 // if (char_code != std.math.maxInt(u32)) {
                 //     std.log.info("{} {}", .{ char_code, input });
                 // }
-
                 if (char_code == 'q') {
                     ui.deinit();
                     // TODO?: Might not clean up main loop
@@ -129,6 +127,32 @@ pub const UiNotCurses = struct {
                     scrolled = true;
                 } else if (char_code == 'k') {
                     row_change += 1;
+                    scrolled = true;
+                } else if (char_code == Key.pgup) {
+                    const std_plane = try NotCurses.stdplane(self.nc);
+                    var cols: usize = 0;
+                    var rows: usize = 0;
+                    Plane.dimYX(std_plane, &rows, &cols);
+                    row_change += @intCast(isize, rows) - 1;
+                    scrolled = true;
+                } else if (char_code == Key.pgdown) {
+                    const std_plane = try NotCurses.stdplane(self.nc);
+                    var cols: usize = 0;
+                    var rows: usize = 0;
+                    Plane.dimYX(std_plane, &rows, &cols);
+                    row_change -= @intCast(isize, rows) - 1;
+                    scrolled = true;
+                } else if (char_code == Key.home) {
+                    var cursor_row: usize = 0;
+                    var cursor_col: usize = 0;
+                    Plane.cursorYX(self.text_plane, &cursor_row, &cursor_col);
+                    row_change += @intCast(isize, cursor_row);
+                    scrolled = true;
+                } else if (char_code == Key.end) {
+                    var cursor_row: usize = 0;
+                    var cursor_col: usize = 0;
+                    Plane.cursorYX(self.text_plane, &cursor_row, &cursor_col);
+                    row_change -= @intCast(isize, cursor_row);
                     scrolled = true;
                 } else if (char_code == 'r') {
                     try NotCurses.render(self.nc);
@@ -155,6 +179,7 @@ pub const UiNotCurses = struct {
                         }
                     }
                 }
+                char_code = NotCurses.getcNblock(self.nc, &input);
             }
 
             if (scrolled) {
@@ -172,17 +197,26 @@ pub const UiNotCurses = struct {
 
                 // Don't cross text_plane edges
                 if (row_change != 0) {
-                    const new_curr = row_curr + row_change;
+                    const new_curr = blk: {
+                        const wanted_curr = row_curr + row_change;
 
-                    var bottom_edge = -(@intCast(isize, cursor_row) - @intCast(isize, rows) + 1);
-                    if (new_curr <= 0 and bottom_edge <= new_curr) {
-                        row_curr = new_curr;
-                        try Plane.moveYX(self.text_plane, new_curr, col_curr);
-                    } else {}
+                        if (wanted_curr > 0) {
+                            break :blk 0;
+                        }
+
+                        const bottom_edge = -(@intCast(isize, cursor_row) - @intCast(isize, rows) + 1);
+
+                        if (bottom_edge > wanted_curr) {
+                            break :blk bottom_edge;
+                        }
+
+                        break :blk wanted_curr;
+                    };
+
+                    try Plane.moveYX(self.text_plane, new_curr, col_curr);
+                    row_curr = new_curr;
                 }
 
-                std.log.info("cursor: {} {}", .{ cursor_row, cursor_col });
-                std.log.info("text_plane: {} {}", .{ row_curr, col_curr });
                 var last_row = @intCast(isize, rows) - 1 + (-row_curr);
 
                 if (cursor_row > last_row) {

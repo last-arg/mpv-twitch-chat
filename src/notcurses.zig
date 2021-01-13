@@ -32,6 +32,10 @@ pub const Key = struct {
     pub const release = nc.NCKEY_RELEASE;
     pub const scroll_up = nc.NCKEY_SCROLL_UP;
     pub const scroll_down = nc.NCKEY_SCROLL_DOWN;
+    pub const pgdown = nc.NCKEY_PGDOWN;
+    pub const pgup = nc.NCKEY_PGUP;
+    pub const home = nc.NCKEY_HOME;
+    pub const end = nc.NCKEY_END;
 };
 
 pub const Style = struct {

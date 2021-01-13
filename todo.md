@@ -4,8 +4,8 @@ Features:
 
 Improve:
 [ ] UI (Notcurses): add scroll events
-[ ] UI (Notcurses): events: pagedown, pageup, home, end
 [ ] UI (NotCurses): resizing
 
 Bugs:
 [ ] UiNotCurses? There might be condition in which CPU will be 100%
+[ ] Ui (NotCurses) on unexpected crash cant see cursor

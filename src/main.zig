@@ -147,8 +147,9 @@ pub fn main() anyerror!void {
             },
             .notcurses => {
                 var ui_mode = try ui.UiNotCurses.init();
-                // TODO: notcurses log file
-                log_file_path = "/tmp/mpv-vod-chat.log";
+                // log_file_path = "/dev/pts/8";
+                log_file_path = "tmp/log";
+                // log_file_path = "/tmp/mpv-vod-chat.log";
                 break :blk &ui_mode.ui;
             },
         }
@@ -203,6 +204,7 @@ pub fn main() anyerror!void {
 
         switch (download.state) {
             .Using => {
+                std.log.info("Using", .{});
                 if (((!comments.has_prev and mpv.video_time < first_offset) or
                     (!comments.has_next and mpv.video_time > last_offset)) and
                     mpv.video_time > (last_offset - download_time))
@@ -232,6 +234,7 @@ pub fn main() anyerror!void {
                 continue;
             },
             .Ready => {
+                std.log.info("Ready", .{});
                 const first_new = comments_new.offsets.items[0];
                 const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 if (chat_time > first_new and chat_time < last_new) {
@@ -251,7 +254,9 @@ pub fn main() anyerror!void {
                     th = try Thread.spawn(&download, Download.download);
                 }
             },
-            .Downloading => {},
+            .Downloading => {
+                std.log.info("Downloading", .{});
+            },
         }
 
         const delay_ns: u64 = blk: {
