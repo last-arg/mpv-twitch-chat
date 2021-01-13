@@ -3,7 +3,6 @@ Features:
 [ ] Make CLI option for logfile
 
 Improve:
-[ ] UI (Notcurses): add scroll events
 [ ] UI (NotCurses): resizing
 
 Bugs:

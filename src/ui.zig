@@ -110,9 +110,6 @@ pub const UiNotCurses = struct {
             var scrolled = false;
             var row_change: isize = 0;
 
-            // pub const NCKEY_SCROLL_UP = NCKEY_BUTTON4;
-            // pub const NCKEY_SCROLL_DOWN = NCKEY_BUTTON5;
-
             while (char_code != std.math.maxInt(u32)) {
                 // if (char_code != std.math.maxInt(u32)) {
                 //     std.log.info("{} {}", .{ char_code, input });
@@ -122,6 +119,12 @@ pub const UiNotCurses = struct {
                     // TODO?: Might not clean up main loop
                     // Makes sure that cursor is visible and works
                     std.process.exit(0);
+                } else if (char_code == Key.scroll_up) {
+                    row_change += 1;
+                    scrolled = true;
+                } else if (char_code == Key.scroll_down) {
+                    row_change -= 1;
+                    scrolled = true;
                 } else if (char_code == 'j') {
                     row_change -= 1;
                     scrolled = true;
