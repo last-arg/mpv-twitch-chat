@@ -149,7 +149,8 @@ pub fn main() anyerror!void {
     } else {
         switch (output_mode) {
             .stdout, .direct => log_file_path = null,
-            .notcurses => log_file_path = "/tmp/mpv-twitch-chat.log",
+            .notcurses => log_file_path = "tmp/log",
+            // .notcurses => log_file_path = "/tmp/mpv-twitch-chat.log",
         }
     }
 

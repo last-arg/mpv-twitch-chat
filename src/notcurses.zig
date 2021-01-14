@@ -167,17 +167,22 @@ fn defaultResizeCb(p: ?*Plane.T) callconv(.C) c_int {
     var rows: usize = 0;
     var cols: usize = 0;
     Plane.dimYX(p.?, &rows, &cols);
+    log.info("resize: {} {}", .{ rows, cols });
     return 0;
 }
 
 pub const Plane = struct {
     pub const T = nc.struct_ncplane;
     pub const Options = nc.ncplane_options;
+    const ResizeCb = fn (?*T) callconv(.C) c_int;
 
     pub const CreateOptions = struct {
         x: isize = 0,
         y: isize = 0,
         flags: usize = 0,
+        resizecb: ?ResizeCb = null,
+        name: []const u8 = "",
+        userptr: ?*c_void = null,
     };
 
     // TODO: implement rest of CreateOptions args
@@ -187,10 +192,9 @@ pub const Plane = struct {
             .x = @intCast(c_int, opts.y),
             .rows = @intCast(c_int, rows),
             .cols = @intCast(c_int, cols),
-            .userptr = null,
+            .userptr = opts.userptr,
             .name = "", // For debugging
-            // .resizecb = fn_cb_param orelse planeResize,
-            .resizecb = defaultResizeCb,
+            .resizecb = opts.resizecb,
             .flags = opts.flags,
         };
 
@@ -199,6 +203,24 @@ pub const Plane = struct {
             return error.PlaneCreateFailed;
         };
         return result;
+    }
+
+    pub fn resizeAlign(p: *T) void {
+        if (nc.ncplane_resize_realign(p) < 0) {
+            log.warn("resizeAlign failed", .{});
+        }
+    }
+
+    pub fn setUserPtr(p: *T, opaque_: ?*c_void) void {
+        _ = nc.ncplane_set_userptr(p, opaque_);
+    }
+
+    pub fn userPtr(p: *T) ?*c_void {
+        return nc.ncplane_userptr(p);
+    }
+
+    pub fn setResizeCb(p: *T, resizecb: ?ResizeCb) void {
+        nc.ncplane_set_resizecb(p, resizecb);
     }
 
     pub fn erase(p: *T) void {
@@ -256,6 +278,10 @@ pub const Plane = struct {
 
     pub fn putStr(p: *T, str: [:0]const u8) isize {
         return nc.ncplane_putstr(p, @ptrCast([*]const u8, str));
+    }
+
+    pub fn parent(p: *T) ?*T {
+        return nc.ncplane_parent(p);
     }
 
     pub fn resizeSimple(p: *T, rows: usize, cols: usize) !void {

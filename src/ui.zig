@@ -45,8 +45,18 @@ pub const Ui = struct {
     }
 };
 
+fn defaultResizeCb(p: ?*Plane.T) callconv(.C) c_int {
+    var rows: usize = 0;
+    var cols: usize = 0;
+    Plane.dimYX(p.?, &rows, &cols);
+    l.info("resize std: {} {}", .{ rows, cols });
+    return 0;
+}
+
 pub const UiNotCurses = struct {
     const Self = @This();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var allocator = &gpa.allocator;
     nc: *NotCurses.T,
     text_plane: *Plane.T,
     info_plane: *Plane.T,
@@ -54,9 +64,66 @@ pub const UiNotCurses = struct {
     scrolling: bool = false,
     mouse_btn1_down: bool = false,
 
-    pub fn init() !Self {
+    fn resizeTextPlane(p: ?*Plane.T) callconv(.C) c_int {
+        const std_plane = Plane.parent(p.?) orelse return -1;
+        Plane.setResizeCb(std_plane, defaultResizeCb);
+        var std_cols: usize = 0;
+        var std_rows: usize = 0;
+        Plane.dimYX(std_plane, &std_rows, &std_cols);
+
+        var text_cols: usize = 0;
+        var text_rows: usize = 0;
+        Plane.dimYX(p.?, &text_rows, &text_cols);
+        Plane.resizeSimple(p.?, text_rows, std_cols) catch return -1;
+
+        if (text_rows > std_rows) {
+            var _usize: usize = 0;
+            var _isize: isize = 0;
+            var cursor_row: usize = 0;
+            Plane.cursorYX(p.?, &cursor_row, &_usize);
+            if (cursor_row < std_rows) {
+                Plane.moveYX(p.?, 0, 0) catch return -1;
+                return 0;
+            }
+
+            var pos_row: isize = 0;
+            Plane.getYX(p.?, &pos_row, &_isize);
+
+            const align_size = @alignOf(UiNotCurses);
+            const self = blk: {
+                if (Plane.userPtr(p.?)) |user_ptr| {
+                    break :blk @ptrCast(*UiNotCurses, @alignCast(align_size, user_ptr));
+                }
+                return -1;
+            };
+            if (!self.scrolling) {
+                // Calculate new text plane's row coordinate
+                const new_pos_row = -@intCast(isize, cursor_row) + @intCast(isize, std_rows) - 1;
+                Plane.moveYX(p.?, new_pos_row, 0) catch return -1;
+            }
+        }
+
+        return 0;
+    }
+
+    pub fn init() !*Self {
         var nc_opts = NotCurses.default_options;
         const n = try NotCurses.init(nc_opts);
+
+        // Need to allocate object so I can pass it to C
+        var result = try allocator.create(UiNotCurses);
+        errdefer allocator.destroy(result);
+        result.* = UiNotCurses{
+            .nc = n,
+            .text_plane = undefined,
+            .info_plane = undefined,
+            .ui = Ui{
+                .deinitFn = deinit,
+                .printFn = print,
+                .printCommentFn = printComment,
+                .sleepLoopFn = sleepLoop,
+            },
+        };
 
         // Create planes
         const std_plane = try NotCurses.stdplane(n);
@@ -64,7 +131,14 @@ pub const UiNotCurses = struct {
         var rows: usize = 0;
         Plane.dimYX(std_plane, &rows, &cols);
         // Text plane setup
-        const text_plane = try Plane.create(std_plane, rows, cols, .{});
+        const text_plane = try Plane.create(
+            std_plane,
+            rows,
+            cols,
+            .{ .resizecb = resizeTextPlane },
+        );
+        result.text_plane = text_plane;
+        Plane.setUserPtr(text_plane, result);
         var text_cell = Cell.charInitializer(' ');
         Plane.setBaseCell(text_plane, text_cell);
 
@@ -73,26 +147,19 @@ pub const UiNotCurses = struct {
             std_plane,
             1,
             cols,
-            .{ .x = @intCast(isize, rows) - 1 },
+            .{
+                .x = @intCast(isize, rows) - 1,
+            },
         );
+        result.info_plane = info_plane;
         Plane.moveBottom(info_plane);
         var info_cell = Cell.charInitializer(' ');
         Cell.setBbRgb(&info_cell, 0xf2e5bc);
         Plane.setBaseCell(info_plane, info_cell);
-        var result = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.center });
+        _ = Plane.putText(info_plane, "Scroll to bottom", .{ .t_align = Align.center });
 
         try NotCurses.mouseEnable(n);
-        return UiNotCurses{
-            .nc = n,
-            .text_plane = text_plane,
-            .info_plane = info_plane,
-            .ui = Ui{
-                .deinitFn = deinit,
-                .printFn = print,
-                .printCommentFn = printComment,
-                .sleepLoopFn = sleepLoop,
-            },
-        };
+        return result;
     }
 
     pub fn sleepLoop(ui: *Ui, ns: u64) !void {
@@ -324,6 +391,7 @@ pub const UiNotCurses = struct {
     pub fn deinit(ui: Ui) void {
         const self = @fieldParentPtr(Self, "ui", &ui);
         NotCurses.stop(self.nc);
+        allocator.destroy(self);
     }
 };
 

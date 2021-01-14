@@ -9,7 +9,7 @@ Bugs:
 
 
 
-Future/Research/Investigate:
+Future/Explore:
 - GUI
 - Certificate file (*.pem)
     - https://curl.haxx.se/docs/caextract.html
