@@ -198,38 +198,41 @@ pub const UiNotCurses = struct {
                 var cursor_col: usize = 0;
                 Plane.cursorYX(self.text_plane, &cursor_row, &cursor_col);
 
-                Plane.getYX(self.text_plane, &row_curr, &col_curr);
+                // Make sure there is anything to scroll
+                if (cursor_row >= rows) {
+                    Plane.getYX(self.text_plane, &row_curr, &col_curr);
 
-                // Don't cross text_plane edges
-                if (row_change != 0) {
-                    const new_curr = blk: {
-                        const wanted_curr = row_curr + row_change;
+                    // Don't cross text_plane edges
+                    if (row_change != 0) {
+                        const new_curr = blk: {
+                            const wanted_curr = row_curr + row_change;
 
-                        if (wanted_curr > 0) {
-                            break :blk 0;
-                        }
+                            if (wanted_curr > 0) {
+                                break :blk 0;
+                            }
 
-                        const bottom_edge = -(@intCast(isize, cursor_row) - @intCast(isize, rows) + 1);
+                            const bottom_edge = -(@intCast(isize, cursor_row) - @intCast(isize, rows) + 1);
 
-                        if (bottom_edge > wanted_curr) {
-                            break :blk bottom_edge;
-                        }
+                            if (bottom_edge > wanted_curr) {
+                                break :blk bottom_edge;
+                            }
 
-                        break :blk wanted_curr;
-                    };
+                            break :blk wanted_curr;
+                        };
 
-                    try Plane.moveYX(self.text_plane, new_curr, col_curr);
-                    row_curr = new_curr;
-                }
+                        try Plane.moveYX(self.text_plane, new_curr, col_curr);
+                        row_curr = new_curr;
+                    }
 
-                var last_row = @intCast(isize, rows) - 1 + (-row_curr);
+                    var last_row = @intCast(isize, rows) - 1 + (-row_curr);
 
-                if (cursor_row > last_row) {
-                    self.scrolling = true;
-                    Plane.moveTop(self.info_plane);
-                } else {
-                    self.scrolling = false;
-                    Plane.moveBottom(self.info_plane);
+                    if (cursor_row > last_row) {
+                        self.scrolling = true;
+                        Plane.moveTop(self.info_plane);
+                    } else {
+                        self.scrolling = false;
+                        Plane.moveBottom(self.info_plane);
+                    }
                 }
                 scrolled = false;
             }

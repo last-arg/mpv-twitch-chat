@@ -6,7 +6,6 @@ Improve:
 
 Bugs:
 [ ] Ui (NotCurses) on unexpected crash cant see cursor after
-[ ] When screen isn't filled with text scrolling works by moving text to bottom or top
 
 
 
