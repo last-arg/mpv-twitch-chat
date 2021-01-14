@@ -8,6 +8,7 @@ Bugs:
 [ ] Ui (NotCurses) on unexpected crash cant see cursor after
 
 
+
 Future/Research/Investigate:
 - GUI
 - Certificate file (*.pem)

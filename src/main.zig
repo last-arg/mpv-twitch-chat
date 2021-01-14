@@ -71,7 +71,7 @@ pub fn main() anyerror!void {
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     var output_mode: ui.UiMode = .stdout;
-    output_mode = .notcurses;
+    // output_mode = .notcurses;
     var opt_log_file: []const u8 = "stdout";
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
@@ -112,6 +112,7 @@ pub fn main() anyerror!void {
                 return;
             }
         } else if (std.mem.eql(u8, "-log-file", arg)) {
+            // TODO: should different output modes have different log file defaults?
             const value = arg_it.nextPosix() orelse {
                 warn("Option '-log-file' requires path or `stdout` ", .{});
                 return;
@@ -122,7 +123,19 @@ pub fn main() anyerror!void {
                 log_file_path = value;
             }
         } else if (std.mem.eql(u8, "-help", arg) or std.mem.eql(u8, "-h", arg)) {
-            // TODO: print help test
+            const help_text =
+                \\mpv-vod-chat [options]
+                \\
+                \\Options:
+                \\  -h, -help        Print help text
+                \\  -socket-path     Default: '/tmp/mpv-twitch-socket'. Set mpv players socket path
+                \\  -comments-delay  When comments are displayed compared to video time
+                \\  -output-mode     Default: stdout. Can enter one three: stdout, direct, notcurses.
+                \\  -log-file        Default: stdout. Can output application log messages to stdout, a file or tty.
+                \\
+            ;
+
+            warn("{}", .{help_text});
             return;
         }
     }
