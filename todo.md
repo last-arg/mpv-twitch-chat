@@ -3,9 +3,10 @@ Features:
 
 Improve:
 [ ] UI (NotCurses): resizing
+    [?] Move info plane resizing to text plane's callback?
 
 Bugs:
-[ ] Ui (NotCurses) on unexpected crash cant see cursor after
+[ ] Ui (NotCurses) on unexpected crash can't see cursor after
 
 
 

@@ -64,48 +64,6 @@ pub const UiNotCurses = struct {
     scrolling: bool = false,
     mouse_btn1_down: bool = false,
 
-    fn resizeTextPlane(p: ?*Plane.T) callconv(.C) c_int {
-        const std_plane = Plane.parent(p.?) orelse return -1;
-        Plane.setResizeCb(std_plane, defaultResizeCb);
-        var std_cols: usize = 0;
-        var std_rows: usize = 0;
-        Plane.dimYX(std_plane, &std_rows, &std_cols);
-
-        var text_cols: usize = 0;
-        var text_rows: usize = 0;
-        Plane.dimYX(p.?, &text_rows, &text_cols);
-        Plane.resizeSimple(p.?, text_rows, std_cols) catch return -1;
-
-        if (text_rows > std_rows) {
-            var _usize: usize = 0;
-            var _isize: isize = 0;
-            var cursor_row: usize = 0;
-            Plane.cursorYX(p.?, &cursor_row, &_usize);
-            if (cursor_row < std_rows) {
-                Plane.moveYX(p.?, 0, 0) catch return -1;
-                return 0;
-            }
-
-            var pos_row: isize = 0;
-            Plane.getYX(p.?, &pos_row, &_isize);
-
-            const align_size = @alignOf(UiNotCurses);
-            const self = blk: {
-                if (Plane.userPtr(p.?)) |user_ptr| {
-                    break :blk @ptrCast(*UiNotCurses, @alignCast(align_size, user_ptr));
-                }
-                return -1;
-            };
-            if (!self.scrolling) {
-                // Calculate new text plane's row coordinate
-                const new_pos_row = -@intCast(isize, cursor_row) + @intCast(isize, std_rows) - 1;
-                Plane.moveYX(p.?, new_pos_row, 0) catch return -1;
-            }
-        }
-
-        return 0;
-    }
-
     pub fn init() !*Self {
         var nc_opts = NotCurses.default_options;
         const n = try NotCurses.init(nc_opts);
@@ -149,6 +107,7 @@ pub const UiNotCurses = struct {
             cols,
             .{
                 .x = @intCast(isize, rows) - 1,
+                .resizecb = resizeInfoPlane,
             },
         );
         result.info_plane = info_plane;
@@ -392,6 +351,62 @@ pub const UiNotCurses = struct {
         const self = @fieldParentPtr(Self, "ui", &ui);
         NotCurses.stop(self.nc);
         allocator.destroy(self);
+    }
+
+    fn resizeTextPlane(p: ?*Plane.T) callconv(.C) c_int {
+        l.info("resize text", .{});
+        const align_size = @alignOf(UiNotCurses);
+        const std_plane = Plane.parent(p.?) orelse return -1;
+        var std_cols: usize = 0;
+        var std_rows: usize = 0;
+        Plane.dimYX(std_plane, &std_rows, &std_cols);
+
+        var text_cols: usize = 0;
+        var text_rows: usize = 0;
+        Plane.dimYX(p.?, &text_rows, &text_cols);
+        Plane.resizeSimple(p.?, text_rows, std_cols) catch return -1;
+
+        const self = blk: {
+            if (Plane.userPtr(p.?)) |user_ptr| {
+                break :blk @ptrCast(*UiNotCurses, @alignCast(align_size, user_ptr));
+            }
+            return -1;
+        };
+
+        var _usize: usize = 0;
+        var _isize: isize = 0;
+        var cursor_row: usize = 0;
+        Plane.cursorYX(p.?, &cursor_row, &_usize);
+        if (cursor_row < std_rows) {
+            Plane.moveYX(p.?, 0, 0) catch return -1;
+            self.scrolling = false;
+            Plane.moveBottom(self.info_plane);
+            return 0;
+        }
+
+        if (!self.scrolling) {
+            // Calculate new text plane's row coordinate
+            const new_pos_row = -@intCast(isize, cursor_row) + @intCast(isize, std_rows) - 1;
+            Plane.moveYX(p.?, new_pos_row, 0) catch return -1;
+        }
+
+        return 0;
+    }
+
+    fn resizeInfoPlane(p: ?*Plane.T) callconv(.C) c_int {
+        l.info("resize info", .{});
+        const std_plane = Plane.parent(p.?) orelse return -1;
+        var std_cols: usize = 0;
+        var std_rows: usize = 0;
+        Plane.dimYX(std_plane, &std_rows, &std_cols);
+
+        Plane.resizeSimple(p.?, 1, std_cols) catch return -1;
+        const new_pos = @intCast(isize, std_rows) - 1;
+        Plane.moveYX(p.?, new_pos, 0) catch return -1;
+        Plane.erase(p.?);
+        _ = Plane.putText(p.?, "Scroll to bottom", .{ .t_align = Align.center });
+
+        return 0;
     }
 };
 
