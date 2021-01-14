@@ -1,14 +1,15 @@
 Features:
 [ ] Track mpv video state to avoid unnecessary downloads. Happens during seek
-[ ] Make CLI option for logfile
 
 Improve:
 [ ] UI (NotCurses): resizing
 
 Bugs:
-[ ] Ui (NotCurses) on unexpected crash cant see cursor
+[ ] Ui (NotCurses) on unexpected crash cant see cursor after
 
-Research/Investigate:
+
+Future/Research/Investigate:
+- GUI
 - Certificate file (*.pem)
     - https://curl.haxx.se/docs/caextract.html
 

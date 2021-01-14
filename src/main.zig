@@ -72,6 +72,7 @@ pub fn main() anyerror!void {
 
     var output_mode: ui.UiMode = .stdout;
     output_mode = .notcurses;
+    var opt_log_file: []const u8 = "stdout";
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
 
@@ -110,7 +111,17 @@ pub fn main() anyerror!void {
                 });
                 return;
             }
-        } else if (std.mem.eql(u8, "-help", arg) and std.mem.eql(u8, "-h", arg)) {
+        } else if (std.mem.eql(u8, "-log-file", arg)) {
+            const value = arg_it.nextPosix() orelse {
+                warn("Option '-log-file' requires path or `stdout` ", .{});
+                return;
+            };
+            if (std.mem.eql(u8, "stdout", value)) {
+                log_file_path = null;
+            } else {
+                log_file_path = value;
+            }
+        } else if (std.mem.eql(u8, "-help", arg) or std.mem.eql(u8, "-h", arg)) {
             // TODO: print help test
             return;
         }
@@ -132,28 +143,6 @@ pub fn main() anyerror!void {
     // const video_id = "855035286";
 
     var chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
-
-    var ui_mode = blk: {
-        switch (output_mode) {
-            .stdout => {
-                log_file_path = null;
-                var ui_mode = try ui.UiStdout.init();
-                break :blk &ui_mode.ui;
-            },
-            .direct => {
-                log_file_path = null;
-                var ui_mode = try ui.UiDirect.init();
-                break :blk &ui_mode.ui;
-            },
-            .notcurses => {
-                // log_file_path = "/dev/pts/12";
-                log_file_path = "tmp/log";
-                // log_file_path = "/tmp/mpv-vod-chat.log";
-                var ui_mode = try ui.UiNotCurses.init();
-                break :blk &ui_mode.ui;
-            },
-        }
-    };
 
     var comments = try Comments.init(allocator, comments_delay);
     defer comments.deinit();
@@ -191,6 +180,22 @@ pub fn main() anyerror!void {
     // if (mpv.video_time > start_time) {
     // }
 
+    var ui_mode = blk: {
+        switch (output_mode) {
+            .stdout => {
+                var ui_mode = try ui.UiStdout.init();
+                break :blk &ui_mode.ui;
+            },
+            .direct => {
+                var ui_mode = try ui.UiDirect.init();
+                break :blk &ui_mode.ui;
+            },
+            .notcurses => {
+                var ui_mode = try ui.UiNotCurses.init();
+                break :blk &ui_mode.ui;
+            },
+        }
+    };
     defer ui_mode.deinit();
 
     while (true) {
