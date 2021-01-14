@@ -96,6 +96,7 @@ pub const UiNotCurses = struct {
     }
 
     pub fn sleepLoop(ui: *Ui, ns: u64) !void {
+        errdefer ui.deinit();
         var self = @fieldParentPtr(Self, "ui", ui);
         const input_inactive_ns = time.ns_per_ms * 120;
         const input_active_ns = time.ns_per_ms * 60;
