@@ -62,7 +62,7 @@ pub fn httpsRequest(allocator: *Allocator, hostname: [:0]const u8, port_nr: u16,
     defer ssl_stream.close() catch {};
 
     var buf: [std.mem.page_size]u8 = undefined;
-    var http_client = hzzp.base.client.create(&buf, ssl_stream.inStream(), ssl_stream.outStream());
+    var http_client = hzzp.base.client.create(&buf, ssl_stream.reader(), ssl_stream.writer());
 
     try http_client.writeStatusLine("GET", path);
     try http_client.writeHeaderValue("Accept", "application/vnd.twitchtv.v5+json");

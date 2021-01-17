@@ -11,6 +11,7 @@ Bugs:
 
 
 Future/Explore:
+- Can I share struct with C without allocating struct?
 - GUI
 - Certificate file (*.pem)
     - https://curl.haxx.se/docs/caextract.html

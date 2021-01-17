@@ -33,7 +33,8 @@
           dev_shell = pkgs'.mkShell
             {
               buildInputs = [
-                pkgs'.zig-master
+                zig-binary
+                # pkgs'.zig-master
                 pkgs'.openssl
                 pkgs'.pkgconfig
                 notcurses

@@ -65,7 +65,7 @@ pub fn main() anyerror!void {
     // dd("\n==========================\n", .{});
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
-    const stdout = std.io.getStdOut().outStream();
+    const stdout = std.io.getStdOut().writer();
 
     var path_buf: [256]u8 = undefined;
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
@@ -188,7 +188,7 @@ pub fn main() anyerror!void {
 
     var comments_new: Comments = try Comments.init(allocator, comments_delay);
 
-    var mutex = std.Mutex{};
+    var mutex = std.Thread.Mutex{};
     var th: *Thread = undefined;
     var download = Download{
         .allocator = allocator,
@@ -316,7 +316,7 @@ const Download = struct {
         Ready,
     },
     data: []const u8,
-    lock: *std.Mutex,
+    lock: *std.Thread.Mutex,
 
     pub fn download(dl: *Self) !void {
         const held = dl.lock.acquire();
