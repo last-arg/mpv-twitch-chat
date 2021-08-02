@@ -4,10 +4,13 @@ Features:
 Improve:
 [ ] UI (NotCurses): resizing
     [?] Move info plane resizing to text plane's callback?
+[ ] new json parsing option - https://github.com/ziglang/zig/issues/7906
 
 Bugs:
 [ ] Ui (NotCurses) on unexpected crash can't see cursor after
 
+Fix:
+[ ] Fix/Refactor after making changes so code works with latest zig compiler
 
 
 Future/Explore:

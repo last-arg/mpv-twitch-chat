@@ -129,7 +129,7 @@ pub const UiNotCurses = struct {
         var col_curr: isize = 0;
         var row_curr: isize = 0;
         const timer = try Timer.start();
-        const start_time = timer.read();
+        // const start_time = timer.read();
         var input: nc.NotCurses.Input = undefined;
 
         while (true) {
@@ -374,7 +374,7 @@ pub const UiNotCurses = struct {
         };
 
         var _usize: usize = 0;
-        var _isize: isize = 0;
+        // var _isize: isize = 0;
         var cursor_row: usize = 0;
         Plane.cursorYX(p.?, &cursor_row, &_usize);
         if (cursor_row < std_rows) {
@@ -430,7 +430,7 @@ pub const UiStdout = struct {
         };
     }
 
-    pub fn sleepLoop(ui: *Ui, ns: u64) !void {
+    pub fn sleepLoop(_: *Ui, ns: u64) !void {
         std.time.sleep(ns);
     }
 
@@ -446,11 +446,11 @@ pub const UiStdout = struct {
         try ui.print(result);
     }
 
-    pub fn print(ui: Ui, str: [:0]const u8) !void {
+    pub fn print(_: Ui, str: [:0]const u8) !void {
         try Self.stdout.writeAll(str);
     }
 
-    pub fn deinit(ui: Ui) void {}
+    pub fn deinit(_: Ui) void {}
 };
 
 pub fn secondsToTimeString(buf: []u8, comment_seconds: f64) ![:0]u8 {
@@ -495,7 +495,7 @@ pub const UiDirect = struct {
         };
     }
 
-    pub fn sleepLoop(ui: *Ui, ns: u64) !void {
+    pub fn sleepLoop(_: *Ui, ns: u64) !void {
         std.time.sleep(ns);
     }
 
@@ -515,7 +515,7 @@ pub const UiDirect = struct {
         try ui.print(body);
     }
 
-    pub fn print(ui: Ui, str: [:0]const u8) !void {
+    pub fn print(_: Ui, str: [:0]const u8) !void {
         try std.io.cWriter(@ptrCast(*std.c.FILE, Direct.stdout)).writeAll(str);
     }
 

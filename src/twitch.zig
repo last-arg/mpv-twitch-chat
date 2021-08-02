@@ -85,6 +85,7 @@ pub fn httpsRequest(allocator: *Allocator, hostname: [:0]const u8, port_nr: u16,
             },
             .header => {},
             .payload => |payload| {
+                // log.warn("payload", .{});
                 try output.appendSlice(payload.data);
             },
             .head_done => {},
@@ -131,7 +132,7 @@ pub fn httpsRequestOpenSSL(allocator: *Allocator, hostname: [:0]const u8, port: 
 
     var buf: [256]u8 = undefined;
     const header_str = try fmt.bufPrint(&buf, header_fmt, .{path});
-    const bytes_written = try writer.write(header_str);
+    _ = try writer.write(header_str);
 
     var buf_ssl: [mem.page_size]u8 = undefined;
     const status_line = blk: {
@@ -142,8 +143,8 @@ pub fn httpsRequestOpenSSL(allocator: *Allocator, hostname: [:0]const u8, port: 
     // Parse status line
     var status_it = mem.split(status_line, " ");
     const status_version = status_it.next() orelse return error.InvalidStatusLine;
-    const status_code = status_it.next() orelse return error.InvalidStatusLine;
-    const status_reason = status_it.rest();
+    // const status_code = status_it.next() orelse return error.InvalidStatusLine;
+    // const status_reason = status_it.rest();
 
     var version_it = mem.split(status_version, "/");
     const http_protocol = version_it.next() orelse return error.InvalidStatusLine;
@@ -203,11 +204,11 @@ pub fn httpsRequestOpenSSL(allocator: *Allocator, hostname: [:0]const u8, port: 
     return output.toOwnedSlice();
 }
 
-test "httpsRequestOpenSSL" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-    const path = "/v5/videos/855035286/comments?content_offset_seconds=2.00";
-    var resp = try httpsRequestOpenSSL(allocator, "www.twitch.tv", 443, path);
-    defer allocator.free(resp);
-    // warn("{}\n", .{resp});
-}
+// test "httpsRequestOpenSSL" {
+//     const testing = std.testing;
+//     const allocator = testing.allocator;
+//     const path = "/v5/videos/855035286/comments?content_offset_seconds=2.00";
+//     var resp = try httpsRequestOpenSSL(allocator, "www.twitch.tv", 443, path);
+//     defer allocator.free(resp);
+//     // warn("{}\n", .{resp});
+// }

@@ -25,6 +25,7 @@ pub fn log(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    _ = scope;
     const prefix = "[" ++ @tagName(level) ++ "] ";
     if (log_file_path) |file_path| {
         var log_file: std.fs.File = undefined;
@@ -65,13 +66,13 @@ pub fn main() anyerror!void {
     // dd("\n==========================\n", .{});
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
-    const stdout = std.io.getStdOut().writer();
+    // const stdout = std.io.getStdOut().writer();
 
     var path_buf: [256]u8 = undefined;
     const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     var output_mode: ui.UiMode = .stdout;
-    output_mode = .notcurses;
+    // output_mode = .notcurses;
     var opt_log_file: ?[]const u8 = null;
     var socket_path: []const u8 = "/tmp/mpv-twitch-socket";
     var comments_delay: f32 = 0.0;
@@ -85,7 +86,7 @@ pub fn main() anyerror!void {
                 return;
             };
             // TODO?: remove negation?
-            comments_delay = -(try fmt.parseFloat(f32, value));
+            comments_delay = (try fmt.parseFloat(f32, value));
         } else if (std.mem.eql(u8, "-socket-path", arg)) {
             socket_path = arg_it.nextPosix() orelse {
                 warn("Option '-socket-path' requires path", .{});
@@ -134,7 +135,7 @@ pub fn main() anyerror!void {
                 \\
             ;
 
-            warn("{}", .{help_text});
+            warn("{s}", .{help_text});
             return;
         }
     }
@@ -162,10 +163,10 @@ pub fn main() anyerror!void {
     // const start_time = mpv.video_time;
 
     // Debug
-    if (debug) {
-        allocator.free(mpv.video_path);
-        mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855788435");
-    }
+    // if (debug) {
+    //     allocator.free(mpv.video_path);
+    //     mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855788435");
+    // }
     const video_id = try twitch.urlToVideoId(mpv.video_path);
     // const video_id = "855035286";
 
@@ -189,7 +190,7 @@ pub fn main() anyerror!void {
     var comments_new: Comments = try Comments.init(allocator, comments_delay);
 
     var mutex = std.Thread.Mutex{};
-    var th: *Thread = undefined;
+    var th: Thread = undefined;
     var download = Download{
         .allocator = allocator,
         .data = "",
@@ -236,32 +237,25 @@ pub fn main() anyerror!void {
 
         switch (download.state) {
             .Using => {
-                if (((!comments.has_prev and mpv.video_time < first_offset) or
-                    (!comments.has_next and mpv.video_time > last_offset)) and
-                    mpv.video_time > (last_offset - download_time))
+                if (((!comments.has_prev and chat_time < first_offset) or
+                    (!comments.has_next and chat_time > last_offset)))
                 {
                     std.log.info("Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
-                    const offset = blk: {
-                        // if (mpv.video_time < first_offset or mpv.video_time > last_offset) {
-                        //     break :blk chat_time;
-                        // }
-                        break :blk last_offset - comments_delay;
-                    };
                     download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
-                    th = try Thread.spawn(&download, Download.download);
+                    th = try Thread.spawn(.{}, Download.download, .{&download});
                     continue;
                 }
             },
             .Finished => {
                 std.log.info("Finished downloading comments", .{});
-                th.wait();
+                // th.wait();
                 try comments_new.parse(download.data);
                 download.freeData();
                 download.state = .Ready;
-                const first_new = comments_new.offsets.items[0];
-                const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
+                // const first_new = comments_new.offsets.items[0];
+                // const last_new = comments_new.offsets.items[comments_new.offsets.items.len - 1];
                 continue;
             },
             .Ready => {
@@ -281,7 +275,7 @@ pub fn main() anyerror!void {
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
                     download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
-                    th = try Thread.spawn(&download, Download.download);
+                    th = try Thread.spawn(.{}, Download.download, .{&download});
                 }
             },
             .Downloading => {},

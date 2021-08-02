@@ -29,7 +29,7 @@ pub const OpenSSL = struct {
     pub fn init(allocator: *Allocator) !Self {
         // define SSL_library_init() OPENSSL_init_ssl(0, NULL)
         // Return: always 1
-        const lib_init = c.OPENSSL_init_ssl(0, null);
+        _ = c.OPENSSL_init_ssl(0, null);
 
         // define SSL_load_error_strings()  OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL)
         // Return: no value

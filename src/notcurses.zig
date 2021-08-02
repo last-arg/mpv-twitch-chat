@@ -20,7 +20,7 @@ const nc = @cImport({
 //
 // Seems like can display images but can't set image size
 
-pub const Align = enum {
+pub const Align = enum(usize) {
     unaligned = nc.NCALIGN_UNALIGNED,
     left = nc.NCALIGN_LEFT,
     center = nc.NCALIGN_CENTER,
@@ -104,8 +104,8 @@ pub const Reel = struct {
         return tablet;
     }
 
-    fn tabletCb(tab: ?*nc.nctablet, render_from_top: bool) callconv(.C) c_int {
-        var plane_current = Tablet.plane(tab.?) catch |err| {
+    fn tabletCb(tab: ?*nc.nctablet, _: bool) callconv(.C) c_int {
+        var plane_current = Tablet.plane(tab.?) catch {
             log.err("Table callback failed\n", .{});
             return 0;
         };
@@ -196,6 +196,8 @@ pub const Plane = struct {
             .name = "", // For debugging
             .resizecb = opts.resizecb,
             .flags = opts.flags,
+            .margin_r = 0,
+            .margin_b = 0,
         };
 
         var result = nc.ncplane_create(plane, &plane2_opts) orelse {
@@ -249,7 +251,7 @@ pub const Plane = struct {
     }
 
     pub fn setScrolling(p: *T, scrollp: bool) void {
-        const prev_state = nc.ncplane_set_scrolling(p, scrollp);
+        _ = nc.ncplane_set_scrolling(p, scrollp);
     }
 
     pub fn putChar(p: *T, char: u8) isize {
@@ -271,7 +273,7 @@ pub const Plane = struct {
         opts: TextOptions,
     ) TextReturn {
         var bytes: usize = 0;
-        const alignment = @intToEnum(nc.ncalign_e, @enumToInt(opts.t_align));
+        const alignment = @intCast(nc.ncalign_e, @enumToInt(opts.t_align));
         const result = nc.ncplane_puttext(p, -1, alignment, str, &bytes);
         return .{ .bytes = bytes, .result = @intCast(isize, result) };
     }
@@ -350,7 +352,7 @@ pub const NotCurses = struct {
     pub const T = nc.struct_notcurses;
     const Struct = nc.struct_notcurses;
     const Options = nc.notcurses_options;
-    const Align = nc.ncalign_e;
+    // const Align = nc.ncalign_e;
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
     const Cell = nc.nccell;
@@ -359,9 +361,9 @@ pub const NotCurses = struct {
     pub const default_options = Options{
         .termtype = null,
         .renderfp = null, // mostly for debugging
-        // .loglevel = nc.ncloglevel_e.NCLOGLEVEL_TRACE,
-        // .loglevel = nc.ncloglevel_e.NCLOGLEVEL_DEBUG,
-        .loglevel = nc.ncloglevel_e.NCLOGLEVEL_SILENT,
+        // .loglevel = nc.NCLOGLEVEL_TRACE,
+        // .loglevel = nc.NCLOGLEVEL_DEBUG,
+        .loglevel = nc.NCLOGLEVEL_SILENT,
         .margin_t = 0,
         .margin_r = 0,
         .margin_b = 0,
@@ -423,7 +425,7 @@ pub const NotCurses = struct {
     }
 
     pub fn planeRgba(plane: *Plane.T) void {
-        const result = nc.ncplane_rgba(plane, Blitter.NCBLIT_DEFAULT, 0, 0, 20, 20);
+        _ = nc.ncplane_rgba(plane, Blitter.NCBLIT_DEFAULT, 0, 0, 20, 20);
     }
 
     pub fn cellInit(cell: *Cell) void {
@@ -492,7 +494,7 @@ pub const Direct = struct {
     // TODO?: make cursor functions into one function with enum parameter?
     pub const T = nc.struct_ncdirect;
     const Struct = nc.struct_ncdirect;
-    const Align = nc.ncalign_e;
+    // const Align = nc.ncalign_e;
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
     pub var stdout: *nc.FILE = undefined;

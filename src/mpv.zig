@@ -98,14 +98,14 @@ pub const Mpv = struct {
                     std.log.warn("WARN: Mpv json field data is null", .{});
                 }
                 continue;
-            } else |err| {
+            } else |_| {
                 // warn("MPV Data Error: {}\n", .{err});
             }
 
             var stream_event = std.json.TokenStream.init(json_str);
             const resp = std.json.parse(Mpv.Event, &stream_event, .{
                 .allocator = self.allocator,
-            }) catch |err| {
+            }) catch {
                 log.err("Failed to parse json string: '{s}'", .{json_str});
                 continue;
             };

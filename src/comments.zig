@@ -50,18 +50,18 @@ pub const Comments = struct {
         const root = tree.root;
 
         if (root.Object.getEntry("comments")) |comments| {
-            const num = comments.value.Array.items.len;
+            // const num = comments.value.Array.items.len;
 
-            for (comments.value.Array.items) |comment| {
-                const commenter = comment.Object.getEntry("commenter").?.value;
-                const name = commenter.Object.getEntry("display_name").?.value.String;
+            for (comments.value_ptr.*.Array.items) |comment| {
+                const commenter = comment.Object.getEntry("commenter").?.value_ptr.*;
+                const name = commenter.Object.getEntry("display_name").?.value_ptr.*.String;
 
-                const message = comment.Object.getEntry("message").?.value;
-                const message_body = message.Object.getEntry("body").?.value.String;
+                const message = comment.Object.getEntry("message").?.value_ptr.*;
+                const message_body = message.Object.getEntry("body").?.value_ptr.*.String;
 
                 // NOTE: can be a float or int
                 const offset_seconds = blk: {
-                    const offset_value = comment.Object.getEntry("content_offset_seconds").?.value;
+                    const offset_value = comment.Object.getEntry("content_offset_seconds").?.value_ptr.*;
                     switch (offset_value) {
                         .Integer => |integer| break :blk @intToFloat(f64, integer),
                         .Float => |float| break :blk float,
