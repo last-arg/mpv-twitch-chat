@@ -3,3 +3,5 @@ translate-c
 zig-cache
 zig-out
 tmp
+.zigmod
+deps.zig
