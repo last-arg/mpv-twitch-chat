@@ -7,7 +7,6 @@ mkShell {
     # zig
     openssl
     pkgconfig
-    # wait till notcurses is in nixos-unstable (nixpkgs)
     notcurses
   ];
 }

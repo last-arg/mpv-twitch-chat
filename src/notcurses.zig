@@ -1,6 +1,5 @@
 const std = @import("std");
-const warn = std.debug.warn;
-const log = std.log.default;
+const log = std.log;
 
 const nc = @cImport({
     @cDefine("_XOPEN_SOURCE", {}); // To enable fn wcwidth
@@ -89,7 +88,7 @@ pub const Reel = struct {
         next_tab: ?*Tablet.T,
         prev_tab: ?*Tablet.T,
         cb: nc.tabletcb,
-        opaque_: ?*c_void,
+        opaque_: ?*anyopaque,
     ) !*Tablet.T {
         var tablet = nc.ncreel_add(
             r,
@@ -182,7 +181,7 @@ pub const Plane = struct {
         flags: usize = 0,
         resizecb: ?ResizeCb = null,
         name: []const u8 = "",
-        userptr: ?*c_void = null,
+        userptr: ?*anyopaque = null,
     };
 
     // TODO: implement rest of CreateOptions args
@@ -213,11 +212,11 @@ pub const Plane = struct {
         }
     }
 
-    pub fn setUserPtr(p: *T, opaque_: ?*c_void) void {
+    pub fn setUserPtr(p: *T, opaque_: ?*anyopaque) void {
         _ = nc.ncplane_set_userptr(p, opaque_);
     }
 
-    pub fn userPtr(p: *T) ?*c_void {
+    pub fn userPtr(p: *T) ?*anyopaque {
         return nc.ncplane_userptr(p);
     }
 
@@ -355,7 +354,6 @@ pub const NotCurses = struct {
     // const Align = nc.ncalign_e;
     const Blitter = nc.ncblitter_e;
     const Scale = nc.ncscale_e;
-    const Cell = nc.nccell;
     pub const Input = nc.ncinput;
 
     pub const default_options = Options{
@@ -428,15 +426,15 @@ pub const NotCurses = struct {
         _ = nc.ncplane_rgba(plane, Blitter.NCBLIT_DEFAULT, 0, 0, 20, 20);
     }
 
-    pub fn cellInit(cell: *Cell) void {
+    pub fn cellInit(cell: *Cell.T) void {
         nc.cell_init(cell);
     }
 
-    pub fn planeBase(plane: *Plane.T, cell: *Cell) void {
+    pub fn planeBase(plane: *Plane.T, cell: *Cell.T) void {
         _ = nc.ncplane_base(plane, cell);
     }
 
-    pub fn planePolyfillYX(plane: *Plane.T, cell: Cell) void {
+    pub fn planePolyfillYX(plane: *Plane.T, cell: Cell.T) void {
         const result = nc.ncplane_polyfill_yx(plane, 0, 0, &cell);
         if (result < 0) {
             log.warn("ncplane_putstr failed", .{});
@@ -478,14 +476,14 @@ pub const NotCurses = struct {
     pub fn version() void {
         const v = nc.notcurses_version();
 
-        dd("NotCurses version: ", .{});
+        log.info("NotCurses version: ", .{});
         var c: ?u8 = 1;
         var i: usize = 0;
         while (c != @as(u8, 0x00)) : (i += 1) {
             c = v[i];
-            dd("{c}", .{c});
+            log.info("{c}", .{c});
         }
-        dd("\n", .{});
+        log.info("\n", .{});
     }
 };
 

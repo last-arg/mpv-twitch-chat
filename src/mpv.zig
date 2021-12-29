@@ -8,7 +8,7 @@ const warn = std.debug.warn;
 
 pub const Mpv = struct {
     fd: os.fd_t,
-    allocator: *Allocator,
+    allocator: Allocator,
     video_path: []const u8 = "",
     video_time: f64 = 0.0,
 
@@ -31,7 +31,7 @@ pub const Mpv = struct {
         command: [][]const u8,
     };
 
-    pub fn init(allocator: *Allocator, socket_path: []const u8) !Self {
+    pub fn init(allocator: Allocator, socket_path: []const u8) !Self {
         const socket_file = try net.connectUnixSocket(socket_path);
         errdefer os.close(socket_file.handle);
 
@@ -59,7 +59,7 @@ pub const Mpv = struct {
 
         var buf: [100]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buf);
-        var request_str = std.ArrayList(u8).init(&fba.allocator);
+        var request_str = std.ArrayList(u8).init(fba.allocator());
         try std.json.stringify(cmd, .{}, request_str.writer());
         try request_str.appendSlice("\r\n");
 
@@ -71,7 +71,7 @@ pub const Mpv = struct {
         const bytes = try os.read(self.fd, buf[0..]);
 
         const json_objs = mem.trimRight(u8, buf[0..bytes], "\r\n");
-        var json_obj = mem.split(json_objs, "\n");
+        var json_obj = mem.split(u8, json_objs, "\n");
 
         while (json_obj.next()) |json_str| {
             var stream = std.json.TokenStream.init(json_str);
@@ -88,7 +88,10 @@ pub const Mpv = struct {
                     switch (data) {
                         .String => |url| {
                             self.allocator.free(self.video_path);
-                            self.video_path = try mem.dupe(self.allocator, u8, url);
+                            var arr_url = try std.ArrayList(u8).initCapacity(self.allocator, url.len);
+                            errdefer arr_url.deinit();
+                            arr_url.appendSliceAssumeCapacity(url);
+                            self.video_path = arr_url.toOwnedSlice();
                         },
                         .Float => |time| {
                             self.video_time = time;

@@ -105,7 +105,7 @@ pub const OpenSSL = struct {
     pub fn read(self: *Self, buf: []u8) ReadError!usize {
         const ssl = self.ssl orelse unreachable;
         const len = @intCast(c_int, buf.len);
-        const bytes = c.SSL_read(ssl, @ptrCast(*c_void, buf), len);
+        const bytes = c.SSL_read(ssl, @ptrCast(*anyopaque, buf), len);
         if (bytes <= 0) {
             warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
             return error.NegativeBytes;
@@ -115,7 +115,7 @@ pub const OpenSSL = struct {
 
     pub fn write(self: *Self, data: []const u8) WriteError!usize {
         const ssl = self.ssl orelse unreachable;
-        const bytes = c.SSL_write(ssl, @ptrCast(*const c_void, data), @intCast(c_int, data.len));
+        const bytes = c.SSL_write(ssl, @ptrCast(*const anyopaque, data), @intCast(c_int, data.len));
         if (bytes <= 0) {
             warn("SSL ERROR: {d}\n", .{c.SSL_get_error(ssl, bytes)});
             return error.NegativeBytes;

@@ -1,12 +1,12 @@
 { stdenv, lib, fetchurl, zlib }:
 
 stdenv.mkDerivation rec {
-  version = "0.9.0-dev";
+  version = "0.10.0-dev";
   name = "zig-binary";
 
   src = builtins.fetchurl {
-    url = "https://ziglang.org/builds/zig-linux-x86_64-0.9.0-dev.718+b465037a6.tar.xz";
-    sha256 = "d0d103212bae02ac4f5275c625bba9512d6a9dd0f59c76ae6f84692813ca8881";
+    url = "https://ziglang.org/builds/zig-linux-x86_64-0.10.0-dev.91+be5130ec5.tar.xz";
+    sha256 = "acf0180b7b0063192cf763d8560bf362f0efd5e48ab46925879debd8ad3e8133";
   };
 
   nativeBuildInputs = [ zlib ];

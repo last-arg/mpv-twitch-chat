@@ -1,5 +1,5 @@
 const std = @import("std");
-const warn = std.debug.warn;
+const print = std.debug.print;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
@@ -11,6 +11,7 @@ const twitch = @import("twitch.zig");
 const ui = @import("ui.zig");
 const Thread = std.Thread;
 const dd = @import("debug.zig").ttyWarn;
+const client = @import("requestz").Client;
 
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
@@ -35,7 +36,7 @@ pub fn log(
             first_log = true;
         } else {
             log_file = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| {
-                warn("{}\n", .{err});
+                print("{}\n", .{err});
                 return;
             };
         }
@@ -65,7 +66,7 @@ const debug = true;
 pub fn main() anyerror!void {
     // dd("\n==========================\n", .{});
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = &gpa.allocator;
+    const allocator = gpa.allocator();
     // const stdout = std.io.getStdOut().writer();
 
     var path_buf: [256]u8 = undefined;
@@ -82,19 +83,19 @@ pub fn main() anyerror!void {
     while (arg_it.nextPosix()) |arg| {
         if (std.mem.eql(u8, "-comments-delay", arg)) {
             const value = arg_it.nextPosix() orelse {
-                warn("Option '-comments-delay' requires value (integer or float)", .{});
+                print("Option '-comments-delay' requires value (integer or float)", .{});
                 return;
             };
             // TODO?: remove negation?
             comments_delay = (try fmt.parseFloat(f32, value));
         } else if (std.mem.eql(u8, "-socket-path", arg)) {
             socket_path = arg_it.nextPosix() orelse {
-                warn("Option '-socket-path' requires path", .{});
+                print("Option '-socket-path' requires path", .{});
                 return;
             };
         } else if (std.mem.eql(u8, "-output-mode", arg)) {
             var arg_value = arg_it.nextPosix() orelse {
-                warn("Option '-output-mode' requires one these value: stdout, direct, notcurses", .{});
+                print("Option '-output-mode' requires one these value: stdout, direct, notcurses", .{});
                 return;
             };
             if (std.mem.eql(u8, "stdout", arg_value)) {
@@ -104,7 +105,7 @@ pub fn main() anyerror!void {
             } else if (std.mem.eql(u8, "notcurses", arg_value)) {
                 output_mode = .notcurses;
             } else {
-                warn("Option '-output-mode' contains invalid value '{s}'\nValid '-output-mode' values: {s}, {s}, {s}", .{
+                print("Option '-output-mode' contains invalid value '{s}'\nValid '-output-mode' values: {s}, {s}, {s}", .{
                     arg_value,
                     "stdout",
                     "direct",
@@ -115,7 +116,7 @@ pub fn main() anyerror!void {
         } else if (std.mem.eql(u8, "-log-file", arg)) {
             // TODO: should different output modes have different log file defaults?
             const value = arg_it.nextPosix() orelse {
-                warn("Option '-log-file' requires path or `stdout` ", .{});
+                print("Option '-log-file' requires path or `stdout` ", .{});
                 return;
             };
             opt_log_file = value;
@@ -135,7 +136,7 @@ pub fn main() anyerror!void {
                 \\
             ;
 
-            warn("{s}", .{help_text});
+            print("{s}", .{help_text});
             return;
         }
     }
@@ -156,7 +157,7 @@ pub fn main() anyerror!void {
     }
 
     var mpv = Mpv.init(allocator, socket_path) catch |err| {
-        warn("Failed to find mpv socket path: {s}\n", .{socket_path});
+        print("Failed to find mpv socket path: {s}\n", .{socket_path});
         return err;
     };
     defer mpv.deinit();
@@ -168,7 +169,7 @@ pub fn main() anyerror!void {
     //     mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855788435");
     // }
     const video_id = try twitch.urlToVideoId(mpv.video_path);
-    // const video_id = "855035286";
+    // const video_id = "1227731389";
 
     var chat_time = if (mpv.video_time < comments_delay) 0.0 else mpv.video_time - comments_delay;
 

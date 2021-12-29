@@ -1,5 +1,7 @@
 const std = @import("std");
 const Builder = std.build.Builder;
+// const pkgs = @import("deps.zig").pkgs; // gyro
+const deps = @import("deps.zig"); // zigmod
 
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
@@ -18,9 +20,11 @@ pub fn build(b: *Builder) void {
     exe.linkLibC();
     // exe.linkSystemLibrary("openssl");
     exe.linkSystemLibrary("notcurses");
-    exe.addPackage(.{ .name = "hzzp", .path = .{ .path = "lib/hzzp/src/main.zig" } });
-    exe.addPackage(.{ .name = "zig-bearssl", .path = .{ .path = "lib/zig-bearssl/bearssl.zig" } });
-    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
+    // exe.addPackage(.{ .name = "hzzp", .path = .{ .path = "lib/hzzp/src/main.zig" } });
+    // exe.addPackage(.{ .name = "zig-bearssl", .path = .{ .path = "lib/zig-bearssl/src/bearssl.zig" } });
+    // exe.addPackage(.{ .name = "requestz", .path = .{ .path = "lib/requestz/src/main.zig" } });
+    // @import("lib/zig-bearssl/src/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
+    deps.addAllTo(exe);
     exe.install();
 
     const run_cmd = exe.run();
@@ -37,11 +41,12 @@ pub fn build(b: *Builder) void {
     };
     var file_test = b.addTest(test_file);
     file_test.setBuildMode(mode);
-    file_test.linkSystemLibrary("openssl");
+    // file_test.linkSystemLibrary("openssl");
     file_test.linkLibC();
-    file_test.addPackage(.{ .name = "hzzp", .path = .{ .path = "lib/hzzp/src/main.zig" } });
-    file_test.addPackage(.{ .name = "zig-bearssl", .path = .{ .path = "lib/zig-bearssl/bearssl.zig" } });
-    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", file_test, target);
+    deps.addAllTo(file_test);
+    // file_test.addPackage(.{ .name = "hzzp", .path = .{ .path = "lib/hzzp/src/main.zig" } });
+    // file_test.addPackage(.{ .name = "zig-bearssl", .path = .{ .path = "lib/zig-bearssl/bearssl.zig" } });
+    // @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", file_test, target);
 
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&file_test.step);

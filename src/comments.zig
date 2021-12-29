@@ -15,7 +15,7 @@ pub const CommentResult = struct {
 pub const Comments = struct {
     offsets: Offsets,
     comments: CommentArray,
-    allocator: *Allocator,
+    allocator: Allocator,
     next_index: usize = 0,
     chat_offset_correction: f64 = 0.0,
     has_next: bool = false,
@@ -30,7 +30,7 @@ pub const Comments = struct {
     const Offsets = ArrayList(f64);
     const CommentArray = ArrayList(Comment);
 
-    pub fn init(allocator: *Allocator, chat_offset_correction: f64) !Self {
+    pub fn init(allocator: Allocator, chat_offset_correction: f64) !Self {
         var self = Self{
             .offsets = try Offsets.initCapacity(allocator, 60),
             .comments = try CommentArray.initCapacity(allocator, 60),
