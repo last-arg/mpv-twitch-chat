@@ -1,48 +1,33 @@
-# Twitch chat with MPV
-Sync twitch's vod chat text with video url being watched in MPV.
+# MPV twitch chat
+Output twitch video (VOD) chat log to terminal from video playing in MPV.
 
-## Dependencies
-- notcurses (TODO: make optional)
-- bearssl (comes with submodule)
+**NOTE:**
+Twitch will deprecate API (v5) that this application is using on February 28, 2022.
 
-## Quickstart
-```console
-$ git clone --recurse-submodules <repo>
+# Usage
+```
+$ mpv --input-ipc-server=<mpv-socket-location> <twitch-vod-url>
+$ mpv-twitch-chat -socket-path <mpv-socket-location>
+```
+
+# Options
+```
+mpv-vod-chat [options]
+
+Options:
+  -h, -help        Print help text
+  -socket-path     Default: '/tmp/mpv-twitch-socket'.
+                   Set mpv players socket path
+  -comments-delay  When comments are displayed compared to video time
+  -output-mode     Default: stdout. Can enter one of three: stdout, direct, notcurses.
+  -log-file        Default(output mode: stdout, direct): stdout.
+  -log-file        Default(output mode: notcurses): '/tmp/mpv-twitch-chat.log'.
+                   Can output application log messages to stdout, a file or tty.
+```
+
+# Build
+```
+$ zigmod fetch
 $ zig build -Drelease-safe
-$ mpv --input-ipc=/tmp/mpv-twitch-socket <video_url>
-$ ./zig-cache/bin/twitch-vod-chat
+# output: ./zig-out/bin/mpv-vod-chat
 ```
-
-## Build without build.zig on Nixos
-TODO: currently doesn't work out of the box because nix adds flag -frandom-seed to $NIX_CFLAGS_COMPILE which makes the compiler fail. Have to remove flag manually or implement automatic way to remove it.
-```console
-zig build-exe src/main.zig $NIX_CFLAGS_COMPILE $NIX_LDFLAGS -lc -lssl -lcrypto -lnotcurses -Drelease-safe
-```
-
-## Testing
-
-### Twitch API with curl
-```console
-curl -H 'Client-ID: yaoofm88l1kvv8i9zx7pyc44he2tcp' \
--X GET 'https://api.twitch.tv/v5/videos/762169747/comments?content_offset_seconds=1.0'
-```
-
-## Notes about Twitch API:
-Using API funcionality that isn't documented by Twitch.
-Have to use API version v5(kraken).
-There is newer Twitch API but that doesn't support getting chat history/comments.
-
-
-## TODO
-* Wait for [issues](https://github.com/truemedian/zfetch/pull/8) to be resolve before continuing to
-explore zfetch and other https client packages
-
-
-## Helpful resources
-[HTTP\1.1 Message Syntax and Routing](https://greenbytes.de/tech/webdav/rfc7230.html#message.body.length)
-[HTTP header parsing](https://github.com/Vexu/routez/blob/master/src/routez/http/parser.zig)
-[OpenSSL server/client example](https://aticleworld.com/ssl-server-client-using-openssl-in-c/)
-[Zig openssl example](https://github.com/marler8997/ziget/blob/master/openssl/ssl.zig)
-
-
-
