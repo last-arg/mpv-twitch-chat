@@ -27,6 +27,7 @@ Options:
 
 # Build
 ```
+$ zigmod fetch
 $ zig build -Drelease-safe
 # output: ./zig-out/bin/mpv-vod-chat
 ```
