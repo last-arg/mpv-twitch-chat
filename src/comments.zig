@@ -52,6 +52,8 @@ pub const Comments = struct {
         if (root.Object.getEntry("comments")) |comments| {
             // const num = comments.value.Array.items.len;
 
+            var tmp_str = ArrayList(u8).init(self.allocator);
+            defer tmp_str.deinit();
             for (comments.value_ptr.*.Array.items) |comment| {
                 const commenter = comment.Object.getEntry("commenter").?.value_ptr.*;
                 const name = commenter.Object.getEntry("display_name").?.value_ptr.*.String;
@@ -69,12 +71,13 @@ pub const Comments = struct {
                     }
                 };
 
-                var new_comment = Comment{
-                    .name = try mem.dupe(self.allocator, u8, name),
-                    .body = try mem.dupe(self.allocator, u8, message_body),
-                };
-                try self.comments.append(new_comment);
+                var new_comment: Comment = undefined;
+                try tmp_str.appendSlice(message_body);
+                new_comment.body = tmp_str.toOwnedSlice();
+                try tmp_str.appendSlice(name);
+                new_comment.name = tmp_str.toOwnedSlice();
 
+                try self.comments.append(new_comment);
                 try self.offsets.append(offset_seconds);
             }
             self.has_next = root.Object.getEntry("_next") == null;
