@@ -138,10 +138,7 @@ pub const UiNotCurses = struct {
             var scrolled = false;
             var row_change: isize = 0;
 
-            while (char_code != std.math.maxInt(u32)) {
-                // if (char_code != std.math.maxInt(u32)) {
-                //     std.log.info("{} {}", .{ char_code, input });
-                // }
+            while (char_code != 0) {
                 if (char_code == 'q') {
                     ui.deinit();
                     // TODO?: Might not clean up main loop

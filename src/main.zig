@@ -206,11 +206,8 @@ pub fn main() anyerror!void {
                 break :blk &ui_mode.ui;
             },
             .notcurses => {
-                // TODO: notcurses output mode doesn't print new comments
-                std.debug.print("notcurses output mode is disabled\n", .{});
-                return error.NotCursesOutputDisabled;
-                // var ui_mode = try ui.UiNotCurses.init();
-                // break :blk &ui_mode.ui;
+                var ui_mode = try ui.UiNotCurses.init();
+                break :blk &ui_mode.ui;
             },
         }
     };
