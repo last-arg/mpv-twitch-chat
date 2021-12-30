@@ -52,13 +52,8 @@ pub fn log(
     }
 }
 
-const g_host = "www.twitch.tv";
-const g_port = 443;
 const default_delay = 1.0; // seconds
 const default_delay_ns = std.time.ns_per_s * default_delay;
-const download_time = 3.0; // seconds. has to be natural number
-
-const debug = true;
 
 // Twitch API v5 chat emoticons
 // https://dev.twitch.tv/docs/v5/reference/chat
