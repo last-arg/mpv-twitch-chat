@@ -11,7 +11,6 @@ const twitch = @import("twitch.zig");
 const ui = @import("ui.zig");
 const Thread = std.Thread;
 const dd = @import("debug.zig").ttyWarn;
-const client = @import("requestz").Client;
 
 // NOTE: net.connectUnixSocket(path) doesn't support evented mode.
 // pub const io_mode = .evented;
