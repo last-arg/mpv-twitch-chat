@@ -46,8 +46,9 @@ pub fn log(
         nosuspend log_file.writer().print(prefix ++ format ++ "\n", args) catch return;
     } else {
         const stderr = std.io.getStdErr().writer();
-        const held = std.debug.getStderrMutex().acquire();
-        defer held.release();
+        const mutex = std.debug.getStderrMutex();
+        mutex.lock();
+        defer mutex.unlock();
         nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
     }
 }
@@ -68,9 +69,6 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     // const stdout = std.io.getStdOut().writer();
-
-    var path_buf: [256]u8 = undefined;
-    const path_fmt = "/v5/videos/{s}/comments?content_offset_seconds={d:.2}";
 
     var output_mode: ui.UiMode = .stdout;
     // output_mode = .notcurses;
@@ -163,11 +161,6 @@ pub fn main() anyerror!void {
     defer mpv.deinit();
     // const start_time = mpv.video_time;
 
-    // Debug
-    // if (debug) {
-    //     allocator.free(mpv.video_path);
-    //     mpv.video_path = try std.mem.dupe(allocator, u8, "https://www.twitch.tv/videos/855788435");
-    // }
     const video_id = try twitch.urlToVideoId(mpv.video_path);
     // const video_id = "1227731389";
 
@@ -178,8 +171,8 @@ pub fn main() anyerror!void {
 
     {
         std.log.info("Download and load first comments", .{});
-        const path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
-        const json_resp = try twitch.httpsRequest(allocator, g_host, g_port, path);
+        // TODO: reenable twitch struct
+        const json_resp = try twitch.requestComments(allocator, video_id, chat_time);
         defer allocator.free(json_resp);
         // const json_resp = @embedFile("../test/skadoodle-chat.json");
         try comments.parse(json_resp);
@@ -196,9 +189,8 @@ pub fn main() anyerror!void {
         .allocator = allocator,
         .data = "",
         .state = .Using,
-        .hostname = g_host,
-        .port = g_port,
-        .path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset }),
+        .video_id = video_id,
+        .video_offset = last_offset,
         .lock = &mutex,
     };
 
@@ -220,8 +212,11 @@ pub fn main() anyerror!void {
                 break :blk &ui_mode.ui;
             },
             .notcurses => {
-                var ui_mode = try ui.UiNotCurses.init();
-                break :blk &ui_mode.ui;
+                // TODO: notcurses output mode doesn't print new comments
+                std.debug.print("notcurses output mode is disabled\n", .{});
+                return error.NotCursesOutputDisabled;
+                // var ui_mode = try ui.UiNotCurses.init();
+                // break :blk &ui_mode.ui;
             },
         }
     };
@@ -244,7 +239,7 @@ pub fn main() anyerror!void {
                     std.log.info("Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
-                    download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, last_offset });
+                    download.video_offset = last_offset;
                     th = try Thread.spawn(.{}, Download.download, .{&download});
                     continue;
                 }
@@ -275,7 +270,7 @@ pub fn main() anyerror!void {
                     std.log.info("Comments out of range. Downloading new comments", .{});
                     comments_new.comments.items.len = 0;
                     comments_new.offsets.items.len = 0;
-                    download.path = try std.fmt.bufPrint(&path_buf, path_fmt, .{ video_id, chat_time });
+                    download.video_offset = chat_time;
                     th = try Thread.spawn(.{}, Download.download, .{&download});
                 }
             },
@@ -300,10 +295,9 @@ pub fn main() anyerror!void {
 
 const Download = struct {
     const Self = @This();
-    allocator: *Allocator,
-    hostname: [:0]const u8,
-    port: u16,
-    path: []const u8,
+    allocator: Allocator,
+    video_id: []const u8,
+    video_offset: f64,
     state: enum {
         Using,
         Downloading,
@@ -314,16 +308,11 @@ const Download = struct {
     lock: *std.Thread.Mutex,
 
     pub fn download(dl: *Self) !void {
-        const held = dl.lock.acquire();
-        defer held.release();
+        dl.lock.lock();
+        defer dl.lock.unlock();
 
         dl.state = .Downloading;
-        dl.data = try twitch.httpsRequest(
-            dl.allocator,
-            dl.hostname,
-            dl.port,
-            dl.path,
-        );
+        dl.data = try twitch.requestComments(dl.allocator, dl.video_id, dl.video_offset);
         dl.state = .Finished;
     }
 
