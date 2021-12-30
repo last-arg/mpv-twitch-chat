@@ -28,7 +28,7 @@ pub const Align = enum(usize) {
 
 pub const Key = struct {
     pub const button1 = nc.NCKEY_BUTTON1;
-    pub const release = nc.NCKEY_RELEASE;
+    pub const release = nc.NCTYPE_RELEASE;
     pub const scroll_up = nc.NCKEY_SCROLL_UP;
     pub const scroll_down = nc.NCKEY_SCROLL_DOWN;
     pub const pgdown = nc.NCKEY_PGDOWN;
@@ -583,10 +583,10 @@ pub const Cell = struct {
     }
 
     pub fn setBbRgb(c: *T, channel: u32) void {
-        _ = nc.cell_set_bg_rgb(c, channel);
+        _ = nc.nccell_set_bg_rgb(c, channel);
     }
 
     pub fn setFbRgb(c: *T, channel: u32) void {
-        _ = nc.cell_set_fg_rgb(c, channel);
+        _ = nc.nccell_set_fg_rgb(c, channel);
     }
 };
