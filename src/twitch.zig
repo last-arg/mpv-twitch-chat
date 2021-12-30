@@ -28,8 +28,9 @@ test "urlToVideoId" {
     // TODO: implement test where there is slash after video id and before '?'
 }
 
-pub fn requestComments(allocator: Allocator, video_id: []const u8, offset: f32) ![]const u8 {
+pub fn requestComments(allocator: Allocator, video_id: []const u8, offset: f64) ![]const u8 {
     // Example: https://github.com/truemedian/zfetch/blob/master/examples/get.zig
+    var buf: [4096]u8 = undefined;
     try zfetch.init();
     defer zfetch.deinit();
 
@@ -40,12 +41,9 @@ pub fn requestComments(allocator: Allocator, video_id: []const u8, offset: f32) 
     try headers.appendValue("Host", "api.twitch.tv");
     try headers.appendValue("Client-ID", "yaoofm88l1kvv8i9zx7pyc44he2tcp");
 
-    const path = "https://api.twitch.tv/v5/videos/{s}/comments?content_offset_seconds={d:.3}";
-    var url = try ArrayList(u8).initCapacity(allocator, path.len + 20);
-    defer url.deinit();
-    try url.writer().print(path, .{ video_id, offset });
-
-    var req = try zfetch.Request.init(allocator, url.items[0..], null);
+    const path_fmt = "https://api.twitch.tv/v5/videos/{s}/comments?content_offset_seconds={d:.3}";
+    const url = try std.fmt.bufPrint(&buf, path_fmt, .{ video_id, offset });
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     try req.do(.GET, headers, null);
@@ -60,7 +58,6 @@ pub fn requestComments(allocator: Allocator, video_id: []const u8, offset: f32) 
 
     const reader = req.reader();
 
-    var buf: [4096]u8 = undefined;
     while (true) {
         const read = try reader.read(&buf);
         if (read == 0) break;
