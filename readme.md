@@ -10,6 +10,21 @@ $ mpv --input-ipc-server=<mpv-socket-location> <twitch-vod-url>
 $ mpv-twitch-chat -socket-path <mpv-socket-location>
 ```
 
+# Options
+```
+mpv-vod-chat [options]
+
+Options:
+  -h, -help        Print help text
+  -socket-path     Default: '/tmp/mpv-twitch-socket'.
+                   Set mpv players socket path
+  -comments-delay  When comments are displayed compared to video time
+  -output-mode     Default: stdout. Can enter one of three: stdout, direct, notcurses.
+  -log-file        Default(output mode: stdout, direct): stdout.
+  -log-file        Default(output mode: notcurses): '/tmp/mpv-twitch-chat.log'.
+                   Can output application log messages to stdout, a file or tty.
+```
+
 # Build
 ```
 $ zig build -Drelease-safe
