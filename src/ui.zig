@@ -56,7 +56,7 @@ fn defaultResizeCb(p: ?*Plane.T) callconv(.C) c_int {
 pub const UiNotCurses = struct {
     const Self = @This();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var allocator = &gpa.allocator;
+    var allocator = gpa.allocator();
     nc: *NotCurses.T,
     text_plane: *Plane.T,
     info_plane: *Plane.T,
