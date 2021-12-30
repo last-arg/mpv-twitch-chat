@@ -7,25 +7,23 @@ const expect = std.testing.expect;
 const zfetch = @import("zfetch");
 
 pub fn urlToVideoId(url: []const u8) ![]const u8 {
-    // TODO: fix. won't work if there is slash after video id and before '?'
-    const start_index = (mem.lastIndexOfScalar(u8, url, '/') orelse return error.InvalidUrl) + 1;
-    const end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
+    var end_index = mem.lastIndexOfScalar(u8, url, '?') orelse url.len;
+    const trimmed_right = mem.trimRight(u8, url[0..end_index], "/");
+    const start_index = (mem.lastIndexOfScalar(u8, trimmed_right, '/') orelse return error.InvalidUrl) + 1;
 
-    return url[start_index..end_index];
+    return trimmed_right[start_index..];
 }
 
 test "urlToVideoId" {
-    {
-        const url = "https://www.twitch.tv/videos/855035286";
+    const urls: []const []const u8 = &.{
+        "https://www.twitch.tv/videos/855035286",
+        "https://www.twitch.tv/videos/855035286?t=2h47m8s",
+        "https://www.twitch.tv/videos/855035286//?t=2h47m8s",
+    };
+    for (urls) |url| {
         const result = try urlToVideoId(url);
         try expect(mem.eql(u8, result, "855035286"));
     }
-    {
-        const url = "https://www.twitch.tv/videos/855035286?t=2h47m8s";
-        const result = try urlToVideoId(url);
-        try expect(mem.eql(u8, result, "855035286"));
-    }
-    // TODO: implement test where there is slash after video id and before '?'
 }
 
 pub fn requestComments(allocator: Allocator, video_id: []const u8, offset: f64) ![]const u8 {
